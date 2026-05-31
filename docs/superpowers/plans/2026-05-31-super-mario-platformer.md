@@ -259,6 +259,15 @@ test('horizontal move into wall reports sideBlocked', () => {
   assertEqual(box.vx, 0);
   assert(facts.sideBlocked);
 });
+
+test('diagonal move into a block corner does not tunnel through (corner clip)', () => {
+  const block = (c, r) => c === 5 && r === 5;        // single solid tile: x80..96, y80..96
+  const box = { x: 70, y: 100, w: 12, h: 12, vx: 240, vy: -480 }; // up-and-right toward its corner
+  const facts = resolveAgainstTiles(box, block, 16, 1/60);
+  const overlaps = box.x < 96 && box.x + box.w > 80 && box.y < 96 && box.y + box.h > 80;
+  assert(!overlaps, 'box must not end up inside the solid tile');
+  assert(facts.hitFromBelow || facts.sideBlocked || facts.landedOnTop, 'a collision was actually reported');
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1058,7 +1067,7 @@ export function createPlayer(spawn) {
     type: 'player', x: spawn.x, y: spawn.y, w: 12, h: 16,
     vx: 0, vy: 0, prevX: spawn.x, prevY: spawn.y,
     onGround: false, coyote: 0, buffer: 0, power: 'small',
-    invuln: 0, facing: 1, alive: true,
+    invuln: 0, facing: 1, alive: true, jumped: false,
   };
 }
 
@@ -1078,7 +1087,7 @@ export function controlPlayer(p, intent, dt) {
   // jump buffering + coyote
   if (intent.jumpPressed) p.buffer = C.JUMP_BUFFER; else p.buffer = Math.max(0, p.buffer - dt);
   if (p.onGround) p.coyote = C.COYOTE; else p.coyote = Math.max(0, p.coyote - dt);
-  if (p.buffer > 0 && p.coyote > 0) { p.vy = C.JUMP_VELOCITY; p.onGround = false; p.coyote = 0; p.buffer = 0; }
+  if (p.buffer > 0 && p.coyote > 0) { p.vy = C.JUMP_VELOCITY; p.onGround = false; p.coyote = 0; p.buffer = 0; p.jumped = true; }
   if (intent.jumpReleased && p.vy < 0) p.vy *= C.JUMP_CUT;       // variable height
   // gravity
   p.vy = Math.min(C.MAX_FALL, p.vy + C.GRAVITY * dt);
@@ -1151,6 +1160,21 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
   w.emit = (ev) => { w.events.push(ev); };
   w.drainEvents = () => { const e = w.events; w.events = []; return e; };
 
+  // scripted (non-physics) animation driven by game-state during dying / level-clear.
+  w._anim = null;
+  w.beginDeathAnim = () => { w._anim = 'death'; w.player.vy = -300; };   // death "pop"
+  w.beginClearAnim = () => { w._anim = 'clear'; };
+  w.updateScripted = (dt) => {
+    if (w._anim === 'death') {
+      w.player.prevY = w.player.y;
+      w.player.vy = Math.min(600, w.player.vy + 1400 * dt);
+      w.player.y += w.player.vy * dt;                 // hop then fall
+    } else if (w._anim === 'clear') {
+      w.player.prevX = w.player.x;
+      w.player.x += 40 * dt;                          // stroll past the flag
+    }
+  };
+
   const solid = (c, r) => solidAt(w.tiles, c, r);
 
   w.update = (dt, intent) => {
@@ -1167,6 +1191,7 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
 
     // === stage 1: tiles (player vs tilemap) ===
     controlPlayer(w.player, intent, dt);
+    if (w.player.jumped) { w.player.jumped = false; w.emit({ type: 'jump' }); }  // real jump (incl. coyote/buffer)
     tryFire(w, intent);                                  // spawn fireball on firePressed (Task 10)
     const facts = resolveAgainstTiles(w.player, solid, 16, dt);
     w.player.onGround = facts.landedOnTop;
@@ -1183,10 +1208,12 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
     resolveProjectiles(w);
     resolveFinish(w);
 
-    // lifecycle flush: run onRemove hooks, remove, THEN add (new entities update next step)
+    // lifecycle flush: dedupe removals (so onRemove runs once even if removal was
+    // requested twice), run onRemove hooks, remove, THEN add (new entities update next step)
     if (w._removeQ.length) {
-      for (const e of w._removeQ) if (e.onRemove) e.onRemove(w);
-      w.entities = w.entities.filter(e => !w._removeQ.includes(e));
+      const unique = [...new Set(w._removeQ)];
+      for (const e of unique) if (e.onRemove) e.onRemove(w);
+      w.entities = w.entities.filter(e => !unique.includes(e));
       w._removeQ.length = 0;
     }
     if (w._spawnQ.length) { w.entities.push(...w._spawnQ); w._spawnQ.length = 0; }
@@ -1204,16 +1231,73 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
 }
 ```
 
-- [ ] **Step 7: Run to verify it passes**
+- [ ] **Step 7: Add tile-behavior tests (`tests/tiles.test.js`)**
 
-Reload `http://localhost:8000/tests/`. Expected: player-jump (incl. coyote/buffer) +
-world-timer PASS. (Spec §10.2, §10.5.)
+Create `tests/tiles.test.js` (uses a lightweight fake world — `bumpTile` only needs
+`tiles`, `player.power`, and the `addCoin`/`addScore`/`spawnPickup`/`emit` hooks):
 
-- [ ] **Step 8: Commit**
+```js
+import { test, assert, assertEqual } from './harness.js';
+import { bumpTile } from '../src/game/tiles.js';
+
+const KIND = { '#':'brick', '?':'coin-block', 'U':'upgrade-block', 'x':'used-block', '-':'empty' };
+function fakeWorld(rows, power) {
+  return {
+    tiles: rows.map(r => r.split('').map(ch => ({ tile: KIND[ch] || 'empty' }))),
+    player: { power }, coins: 0, score: 0, spawned: [], events: [],
+    addCoin(){ this.coins++; this.score += 200; },
+    addScore(n){ this.score += n; },
+    spawnPickup(kind, x, y){ this.spawned.push({ kind, x, y }); },
+    emit(ev){ this.events.push(ev); },
+  };
+}
+
+test('coin-block: becomes used-block, +1 coin, emits coin-collected', () => {
+  const w = fakeWorld(['?'], 'small'); bumpTile(w, 0, 0);
+  assertEqual(w.tiles[0][0].tile, 'used-block');
+  assertEqual(w.coins, 1);
+  assert(w.events.some(e=>e.type==='coin-collected'));
+});
+
+test('upgrade-block while small spawns a mushroom; while big/fire spawns a flower', () => {
+  const small = fakeWorld(['U'], 'small'); bumpTile(small, 0, 0);
+  assertEqual(small.tiles[0][0].tile, 'used-block');
+  assertEqual(small.spawned[0].kind, 'mushroom');
+  const big = fakeWorld(['U'], 'big');  bumpTile(big, 0, 0);  assertEqual(big.spawned[0].kind, 'flower');
+  const fire = fakeWorld(['U'], 'fire'); bumpTile(fire, 0, 0); assertEqual(fire.spawned[0].kind, 'flower');
+});
+
+test('used-block bump: inert, only emits block-hit', () => {
+  const w = fakeWorld(['x'], 'big'); bumpTile(w, 0, 0);
+  assertEqual(w.tiles[0][0].tile, 'used-block');
+  assertEqual(w.spawned.length, 0);
+  assert(w.events.some(e=>e.type==='block-hit'));
+});
+
+test('brick: small bumps without breaking; big & fire break it for score', () => {
+  const small = fakeWorld(['#'], 'small'); bumpTile(small, 0, 0);
+  assertEqual(small.tiles[0][0].tile, 'brick');
+  assert(small.events.some(e=>e.type==='block-hit'));
+  for (const power of ['big', 'fire']) {
+    const w = fakeWorld(['#'], power); bumpTile(w, 0, 0);
+    assertEqual(w.tiles[0][0].tile, 'empty', `${power} breaks the brick`);
+    assert(w.score >= 50, `${power} brick break scored`);
+    assert(w.events.some(e=>e.type==='brick-broken'));
+  }
+});
+```
+
+- [ ] **Step 8: Run to verify it passes**
+
+Add `await import('./tiles.test.js');` to `tests/index.html`. Reload
+`http://localhost:8000/tests/`. Expected: player-jump (incl. coyote/buffer), world-timer,
+and tiles tests PASS. (Spec §6, §7, §10.2, §10.5.)
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: world core (session-owned scoring, accumulating events, ordered pass, lifecycle hooks)"
+git commit -m "feat: world core (session-owned scoring, accumulating events, ordered pass, lifecycle hooks) + tile behavior"
 ```
 
 ---
@@ -1732,18 +1816,38 @@ test('a different intent script yields a different fingerprint (not a constant)'
   const idle = play(Array(71).fill(NONE));   // never move
   assert(moving !== idle, 'fingerprint must actually reflect the intent stream');
 });
+
+// GOLDEN MASTER — locks the exact end-state, catching any future change to physics or
+// ordering (not just run-to-run drift). Recorded via the capture step below.
+const GOLDEN = '__RECORD_ON_FIRST_RUN__';
+
+test('determinism: fingerprint matches the recorded golden master', () => {
+  const fp = play(script());
+  if (GOLDEN === '__RECORD_ON_FIRST_RUN__') {
+    throw new Error('GOLDEN not set — set: const GOLDEN = ' + JSON.stringify(fp) + ';');
+  }
+  assertEqual(fp, GOLDEN);
+});
 ```
 
-- [ ] **Step 2: Run to verify it passes**
+- [ ] **Step 2: Run the run-to-run tests**
 
-Add import. Reload. Expected: PASS (deterministic). If it fails, the cause is hidden
-non-determinism (iteration order, `Date`, `Math.random`) — none should exist. (Spec §10.7.)
+Add `await import('./determinism.test.js');`. Reload. The 3-run-equality and
+different-intent tests PASS; the golden test FAILS with a message of the form
+`GOLDEN not set — set: const GOLDEN = "...";`. (Hidden non-determinism — `Date`,
+`Math.random`, iteration order — would instead break the 3-run test; none should exist.)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Record the golden master**
+
+Copy the exact `const GOLDEN = "...";` string from the failure message into
+`determinism.test.js`, replacing the `'__RECORD_ON_FIRST_RUN__'` sentinel. Reload —
+the golden test now PASSES and is locked. (Spec §10.7.)
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add -A
-git commit -m "test: determinism fingerprint over a fixed intent script"
+git commit -m "test: determinism — 3-run equality, intent-sensitivity, and golden master"
 ```
 
 ---
@@ -1759,7 +1863,7 @@ git commit -m "test: determinism fingerprint over a fixed intent script"
 Create `tests/renderer-readonly.test.js`:
 
 ```js
-import { test, assertEqual } from './harness.js';
+import { test, assert, assertEqual } from './harness.js';
 import { createWorld } from '../src/game/world.js';
 import { parseLevel } from '../src/levels/level-format.js';
 import { createRenderer } from '../src/render/renderer.js';
@@ -1789,9 +1893,11 @@ test('renderer.draw mutates nothing in the full world (§10.12)', () => {
   const renderer = createRenderer(canvas);
   const cam = createCamera({ viewW:256, viewH:240, bounds:w.bounds });
   const before = snapshot(w);
-  renderer.draw(w, cam, 0.5, { score:0, coins:0, lives:3, levelIndex:0 });
-  renderer.draw(w, cam, 0.0, { score:1, coins:2, lives:3, levelIndex:0 });
-  assertEqual(snapshot(w), before, 'player, entities, tilemap, flags, session all unchanged after draws');
+  renderer.draw(w, cam, 0.5, { score:0, coins:0, lives:3, levelIndex:0 }, 'playing');
+  renderer.draw(w, cam, 0.0, { score:1, coins:2, lives:3, levelIndex:0 }, 'paused');  // overlay path
+  renderer.draw(w, cam, 0.0, { score:1, coins:2, lives:3, levelIndex:0 }, 'win');     // overlay path
+  renderer.drawTitle();                                                               // title path
+  assertEqual(snapshot(w), before, 'player, entities, tilemap, flags, session unchanged after draws/overlays/title');
 });
 
 test('camera follows player and clamps to bounds', () => {
@@ -1800,6 +1906,15 @@ test('camera follows player and clamps to bounds', () => {
   assertEqual(cam.x > 0 && cam.x < 1000, true);
   cam.follow({ x:-100, y:0, w:12, h:16 });
   assertEqual(cam.x, 0, 'clamped left');
+});
+
+test('reassigning cam.bounds affects clamping (live bounds, not captured)', () => {
+  const cam = createCamera({ viewW:64, viewH:240, bounds:{left:0,top:0,right:100,bottom:240} });
+  cam.follow({ x:1000, y:0, w:12, h:16 });
+  assertEqual(cam.x, Math.max(0, 100 - 64), 'clamped to original right edge');
+  cam.bounds = { left:0, top:0, right:2000, bottom:240 };   // e.g. next level loaded
+  cam.follow({ x:1000, y:0, w:12, h:16 });
+  assert(cam.x > 100, 'new wider bounds allow scrolling further');
 });
 ```
 
@@ -1815,8 +1930,9 @@ Create `src/engine/camera.js`:
 export function createCamera({ viewW, viewH, bounds }) {
   const cam = { x: 0, y: 0, viewW, viewH, bounds };
   cam.follow = (target) => {
-    let x = target.x + target.w/2 - viewW/2;
-    cam.x = Math.max(bounds.left, Math.min(x, Math.max(bounds.left, bounds.right - viewW)));
+    const b = cam.bounds;                      // read live so reassigning cam.bounds takes effect
+    const x = target.x + target.w/2 - viewW/2;
+    cam.x = Math.max(b.left, Math.min(x, Math.max(b.left, b.right - viewW)));
     cam.y = 0;
   };
   return cam;
@@ -1862,6 +1978,7 @@ export function buildSprites(scale = 1) {
     brick: grid(['BBBBBB','BbBBbB','BBBBBB','bBBbBB','BBBBBB','BbBBbB'], scale),
     ground: grid(['BBBBBB','BbbbbB','bbbbbb','bbbbbb','bbbbbb','bbbbbb'], scale),
     pipe: grid(['GGGGGG','GggggG','GGGGGG','.GggG.','.GggG.','.GggG.'], scale),
+    pipeDeco: grid(['.GggG.','.GggG.','.GggG.','.GggG.','.GggG.','.GggG.'], scale),
     mushroom: grid(['.RRRR.','RWRWRR','RRRRRR','.SSSS.','.SSSS.'], scale),
     flower: grid(['.OYO.','OYOYO','.OOO.','..G..','..G..'], scale),
     fireball: grid(['.OO.','OYYO','OYYO','.OO.'], scale),
@@ -1882,7 +1999,12 @@ import { TILE } from '../engine/constants.js';
 
 const SPRITE_FOR = {
   ground:'ground', brick:'brick', 'coin-block':'coinBlock', 'upgrade-block':'upgradeBlock',
-  'used-block':'usedBlock', pipe:'pipe', coin:'coin',
+  'used-block':'usedBlock', pipe:'pipe', 'pipe-deco':'pipeDeco', coin:'coin',
+};
+
+const OVERLAY_TEXT = {
+  'paused': 'PAUSED', 'level-clear': 'LEVEL CLEAR!', 'game-over': 'GAME OVER',
+  'win': 'YOU WIN!  PRESS A KEY',
 };
 
 export function createRenderer(canvas) {
@@ -1894,7 +2016,7 @@ export function createRenderer(canvas) {
 
   const ENT_SPRITE = { goomba:'goomba', mushroom:'mushroom', flower:'flower', 'coin-pickup':'coin', fireball:'fireball' };
 
-  function draw(world, cam, alpha, session) {
+  function draw(world, cam, alpha, session, state) {
     cam.follow(interp(world.player, alpha));      // mutates cam only, never world
     // sky
     ctx.fillStyle = '#5c94fc'; ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -1930,12 +2052,13 @@ export function createRenderer(canvas) {
       ctx.drawImage(sprites[pk], Math.round(pp.x - cam.x), Math.round(pp.y), world.player.w, world.player.h);
     }
     drawHUD(session, world);
+    if (state) drawOverlay(state);                // paused / level-clear / game-over / win
   }
 
   function interp(e, alpha){ return { x: lerp(e.prevX ?? e.x, e.x, alpha), y: lerp(e.prevY ?? e.y, e.y, alpha), w:e.w, h:e.h }; }
 
   function drawHUD(session, world) {
-    ctx.fillStyle = '#fff'; ctx.font = '8px monospace'; ctx.textBaseline = 'top';
+    ctx.fillStyle = '#fff'; ctx.font = '8px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText(`SCORE ${String(session.score).padStart(6,'0')}`, 4, 2);
     ctx.fillText(`x${session.coins}`, 96, 2);
     ctx.fillText(`WORLD 1-${session.levelIndex+1}`, 150, 2);
@@ -1943,7 +2066,24 @@ export function createRenderer(canvas) {
     ctx.fillText(`LIVES ${session.lives}`, 4, 12);
   }
 
-  return { draw };
+  function centerText(text, y, color = '#fff') {
+    ctx.fillStyle = color; ctx.font = '10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, y); ctx.textAlign = 'left';
+  }
+
+  function drawOverlay(state) {
+    const text = OVERLAY_TEXT[state]; if (!text) return;   // 'dying' shows the death animation, no overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    centerText(text, canvas.height / 2);
+  }
+
+  function drawTitle() {
+    ctx.fillStyle = '#5c94fc'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    centerText('PLUMBER QUEST', canvas.height / 2 - 12, '#fff');
+    centerText('PRESS ANY KEY', canvas.height / 2 + 8, '#ffd23f');
+  }
+
+  return { draw, drawTitle };
 }
 ```
 
@@ -1974,31 +2114,42 @@ Create `tests/flagpole.test.js`:
 import { test, assert, assertEqual } from './harness.js';
 import { createGameState, STATES } from '../src/game/game-state.js';
 
-function worldFactory() {
+function worldFactory(start = 5) {
   return (levelIndex, session) => ({
-    levelIndex, timeRemaining: 5, timeUp:false, fell:false, playerDied:false, flagReached:false,
-    update(){}, updateScripted(dt){ /* freeze physics */ },
+    levelIndex, timeRemaining: start, timeUp:false, fell:false, playerDied:false, flagReached:false,
+    update(){}, updateScripted(){ /* frozen */ }, beginDeathAnim(){}, beginClearAnim(){},
   });
 }
 
 const NONE = { };
+const CLEAR = { dying:0.5, levelClear:1.5 };
 
-test('flag triggers level-clear, drains time into score, then advances', () => {
-  const gs = createGameState({ worldFactory: worldFactory(), levelCount: 2, scriptTimes:{ dying:0.5, levelClear:1.0 } });
+test('flag -> level-clear: drains timer into score, EXACT total, then advances', () => {
+  const gs = createGameState({ worldFactory: worldFactory(5), levelCount: 2, scriptTimes: CLEAR });
   gs.startGame();
+  const base = gs.session.score;
   gs.world.flagReached = true;
   gs.update(1/60, NONE);
   assertEqual(gs.state, STATES.levelClear);
-  const before = gs.session.score;
-  // advance ~1.0s of scripted time
-  for (let i=0;i<70 && gs.state===STATES.levelClear;i++) gs.update(1/60, NONE);
-  assert(gs.session.score > before, 'time converted to score');
+  for (let i=0;i<200 && gs.state===STATES.levelClear;i++) gs.update(1/60, NONE);
+  assertEqual(gs.session.score, base + Math.round(5 * 10), 'exact timer→score total (5*10=50), no rounding drift');
+  assertEqual(gs.world.timeRemaining, 0, 'timer fully drained');
   assertEqual(gs.session.levelIndex, 1, 'advanced to next level');
   assertEqual(gs.state, STATES.playing);
 });
 
+test('level-clear lasts ~its configured duration, NOT timer-rate', () => {
+  // A 300s timer must still convert in ~1.5s (≈90 steps), not 3s+ — magnitude-independent.
+  const gs = createGameState({ worldFactory: worldFactory(300), levelCount: 2, scriptTimes: CLEAR });
+  gs.startGame(); gs.world.flagReached = true; gs.update(1/60, NONE);
+  let steps = 0;
+  while (gs.state === STATES.levelClear && steps < 600) { gs.update(1/60, NONE); steps++; }
+  assert(steps >= 85 && steps <= 95, `clear finished in ~1.5s (${steps} steps), not at timer rate`);
+  assertEqual(gs.session.score, Math.round(300 * 10), 'full timer converted exactly (3000)');
+});
+
 test('dying script runs its duration then reloads', () => {
-  const gs = createGameState({ worldFactory: worldFactory(), levelCount: 2, scriptTimes:{ dying:0.5, levelClear:1.0 } });
+  const gs = createGameState({ worldFactory: worldFactory(5), levelCount: 2, scriptTimes: CLEAR });
   gs.startGame(); gs.session.lives = 2;
   gs.world.playerDied = true; gs.update(1/60, NONE);
   assertEqual(gs.state, STATES.dying);
@@ -2025,7 +2176,16 @@ export function createGameState({ worldFactory, levelCount, scriptTimes = { dyin
 Replace the `enterScripted`, `_completeScripted`, and the scripted branch of `update`:
 
 ```js
-  const enterScripted = (state) => { gs.state = state; gs._scriptT = 0; };
+  const enterScripted = (state) => {
+    gs.state = state; gs._scriptT = 0;
+    if (state === STATES.dying) {
+      gs.world.beginDeathAnim && gs.world.beginDeathAnim();
+    } else if (state === STATES.levelClear) {
+      gs.world.beginClearAnim && gs.world.beginClearAnim();
+      gs._clearStart = gs.world.timeRemaining;   // whole timer to convert
+      gs._clearAwarded = 0;                       // cumulative score awarded (bias-free)
+    }
+  };
 
   function _completeScripted() {
     if (gs.state === STATES.dying) {
@@ -2041,26 +2201,31 @@ Replace the `enterScripted`, `_completeScripted`, and the scripted branch of `up
   gs.finishScriptedForTest = _completeScripted;   // keep Task 5 tests valid
 
   // inside gs.update, replace the dying/levelClear case body with:
-      case STATES.dying:
+      case STATES.dying: {
+        gs._scriptT += dt;
+        gs.world.updateScripted && gs.world.updateScripted(dt);
+        if (gs._scriptT >= scriptTimes.dying) _completeScripted();
+        break;
+      }
       case STATES.levelClear: {
         gs._scriptT += dt;
-        if (gs.state === STATES.levelClear && gs.world.timeRemaining > 0) {
-          // drain remaining time into score (timer→score conversion)
-          const drain = Math.min(gs.world.timeRemaining, 100 * dt);
-          gs.world.timeRemaining -= drain;
-          gs.session.score += Math.round(drain * 10);
-        }
         gs.world.updateScripted && gs.world.updateScripted(dt);
-        const limit = gs.state === STATES.dying ? scriptTimes.dying : scriptTimes.levelClear;
-        if (gs._scriptT >= limit && (gs.state !== STATES.levelClear || gs.world.timeRemaining <= 0)) {
-          _completeScripted();
-        }
+        // Convert the ENTIRE remaining timer into score over scriptTimes.levelClear seconds,
+        // independent of the timer's magnitude. Award the delta to a rounded cumulative target
+        // so there is no per-frame rounding bias and the final total is exactly round(start*10).
+        const frac = Math.min(1, gs._scriptT / scriptTimes.levelClear);
+        const targetScore = Math.round(gs._clearStart * 10 * frac);
+        gs.session.score += (targetScore - gs._clearAwarded);
+        gs._clearAwarded = targetScore;
+        gs.world.timeRemaining = gs._clearStart * (1 - frac);
+        if (frac >= 1) _completeScripted();
         break;
       }
 ```
 
-(The `level-clear` completion waits for both the minimum script time **and** the time
-fully drained, so the score animation always finishes.)
+The `level-clear` conversion is purely a function of elapsed scripted time, so a 300s
+timer and a 5s timer both finish in `scriptTimes.levelClear` (~1.5s); the cumulative
+rounded target guarantees the exact final score.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -2121,13 +2286,23 @@ test('unlock resumes a suspended context', async () => {
   assertEqual(ctx.state, 'running');
 });
 
-test('stopMusic stops scheduled music nodes', () => {
+test('stopMusic stops EVERY scheduled music node', () => {
   const ctx = fakeCtx();
   const a = createAudio({ ctxFactory: () => ctx });
-  a.unlock(); a.startMusic();
-  const made = ctx._nodes.length;
+  a.unlock();
+  ctx._nodes.length = 0;                 // ignore any nodes created before music starts
+  a.startMusic();                        // schedules at least the first note synchronously
+  assert(ctx._nodes.length > 0, 'music scheduled at least one node');
   a.stopMusic();
-  assert(made > 0 && ctx._nodes.every(n => n.stopped || n.type==='square'), 'music nodes stopped');
+  assert(ctx._nodes.every(n => n.stopped === true), 'every scheduled music node was stopped');
+});
+
+test('mute mid-music stops it too', () => {
+  const ctx = fakeCtx();
+  const a = createAudio({ ctxFactory: () => ctx });
+  a.unlock(); ctx._nodes.length = 0; a.startMusic();
+  a.setMuted(true);
+  assert(ctx._nodes.every(n => n.stopped === true), 'muting stopped the music nodes');
 });
 ```
 
@@ -2346,11 +2521,13 @@ function worldFactory(levelIndex, session) {
 const gs = createGameState({ worldFactory, levelCount: LEVELS.length });
 const cam = createCamera({ viewW: canvas.width, viewH: canvas.height, bounds: { left:0, top:0, right:99999, bottom:240 } });
 
-// --- integer canvas scaling: crisp pixels, never fractional blur (Finding: sizing) ---
+// --- canvas scaling: integer up-scale for crisp pixels; fractional DOWN-scale only when
+//     the window is smaller than the native 256×240 so it never overflows ---
 function resize() {
-  const s = Math.max(1, Math.floor(Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height)));
-  canvas.style.width = canvas.width * s + 'px';
-  canvas.style.height = canvas.height * s + 'px';
+  const ratio = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
+  const scale = ratio >= 1 ? Math.floor(ratio) : ratio;
+  canvas.style.width = canvas.width * scale + 'px';
+  canvas.style.height = canvas.height * scale + 'px';
 }
 window.addEventListener('resize', resize); resize();
 
@@ -2384,12 +2561,9 @@ const loop = createLoop({
   beforeFrame() { input.beginFrame(); },           // open input frame BEFORE any fixed steps
   step() {
     const intent = input.consumeIntent();          // edge delivered to first step this frame
-    const jumpedFromGround = intent.jumpPressed && gs.state === STATES.playing &&
-                             gs.world && gs.world.player.onGround;
     gs.update(1/60, intent);                       // gates by state internally (paused = no-op)
-    if (jumpedFromGround) audio.play('jump');
-    if (gs.world) cam.bounds = gs.world.bounds;
-  },
+    if (gs.world) cam.bounds = gs.world.bounds;     // live bounds for camera follow
+  },                                                // jump SFX now flows via the 'jump' event
   afterFrame() {                                   // once per frame, after ALL steps
     if (gs.world) for (const e of gs.world.drainEvents()) audio.playEvent(e.type);
     if (gs.state !== prevState) {
@@ -2399,7 +2573,8 @@ const loop = createLoop({
     }
   },
   render(alpha) {                                  // real interpolation alpha
-    if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session);
+    if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session, gs.state);
+    else renderer.drawTitle();
   },
 });
 loop.start();
