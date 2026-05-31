@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Tests</title>
+<style>body{font:14px/1.4 monospace;white-space:pre;padding:16px;background:#111;color:#eee}</style>
+</head><body><div id="out">running…</div>
+<script type="module">
+  import { runAll } from './harness.js';
+  // Import every test module so its test() calls register:
+  await import('./smoke.test.js');
+  await import('./aabb.test.js');
+  await import('./input.test.js');
+  await import('./loop.test.js');
+  await import('./game-state.test.js');
+  await import('./level-format.test.js');
+  await import('./player-jump.test.js');
+  await import('./world-timer.test.js');
+  await import('./tiles.test.js');
+  await import('./enemy-collision.test.js');
+  await import('./lifecycle.test.js');
+  await import('./pickups.test.js');
+  await import('./fireball.test.js');
+  await import('./determinism.test.js');
+  await import('./renderer-readonly.test.js');
+  await import('./flagpole.test.js');
+  await import('./audio.test.js');
+  await import('./levels-load.test.js');
+  await runAll(document.getElementById('out'));
+</script>
+</body></html>

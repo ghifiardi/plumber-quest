@@ -253,9 +253,12 @@ test('upward box hits ceiling and reports hitFromBelow with tile coords', () => 
 });
 
 test('horizontal move into wall reports sideBlocked', () => {
-  const wall = (c, r) => c === 6;            // wall column at x=96
-  const box = { x: 80, y: 0, w: 12, h: 12, vx: 80, vy: 0 };
+  const wall = (c, r) => c === 6;            // wall column spans x=96..112
+  // vx must carry the box's right edge INTO col 6 this step without overshooting it:
+  // right edge = 80 + vx/60 + 12 must land in [96,111] -> vx in [240,1140]. Use 600.
+  const box = { x: 80, y: 0, w: 12, h: 12, vx: 600, vy: 0 };
   const facts = resolveAgainstTiles(box, wall, 16, 1/60);
+  assertEqual(box.x, 84, 'snapped against left face of the wall (96-12)');
   assertEqual(box.vx, 0);
   assert(facts.sideBlocked);
 });
@@ -1461,7 +1464,7 @@ export function resolveEnemies(w) {
     if (!overlap(p, e)) continue;
     const cameFromAbove = p.vy > 0 && (p.prevY + p.h) <= e.y + 4;
     if (cameFromAbove) { e.stomp(w); w.addScore(STOMP_SCORE); p.vy = -240; }   // consequence then event in stomp()
-    else damagePlayer(w);
+    else { damagePlayer(w); if (w.playerDied) break; }   // stop after death: no duplicate player-died this frame
   }
 }
 
@@ -2131,9 +2134,10 @@ test('flag -> level-clear: drains timer into score, EXACT total, then advances',
   gs.world.flagReached = true;
   gs.update(1/60, NONE);
   assertEqual(gs.state, STATES.levelClear);
+  const clearedWorld = gs.world;   // capture: _completeScripted() swaps in a fresh world on advance
   for (let i=0;i<200 && gs.state===STATES.levelClear;i++) gs.update(1/60, NONE);
   assertEqual(gs.session.score, base + Math.round(5 * 10), 'exact timer→score total (5*10=50), no rounding drift');
-  assertEqual(gs.world.timeRemaining, 0, 'timer fully drained');
+  assertEqual(clearedWorld.timeRemaining, 0, 'the CLEARED level timer fully drained (new world is separate)');
   assertEqual(gs.session.levelIndex, 1, 'advanced to next level');
   assertEqual(gs.state, STATES.playing);
 });
@@ -2550,11 +2554,11 @@ function begin() {
   if (gs.state === STATES.title || gs.state === STATES.gameOver || gs.state === STATES.win) {
     gs.startGame();                 // full session reset (Finding #7)
     cam.bounds = gs.world.bounds;
-    audio.startMusic();
+    // music start is owned solely by afterFrame's transition handling (avoids a double startMusic)
   }
 }
 window.addEventListener('keydown', begin);
-window.addEventListener('pointerdown', () => audio.unlock());
+window.addEventListener('pointerdown', () => { audio.unlock(); begin(); });  // touch users can start too
 
 let prevState = gs.state;
 const loop = createLoop({

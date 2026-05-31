@@ -1,0 +1,7 @@
+html,body{margin:0;height:100%;background:#000;display:flex;align-items:center;justify-content:center}
+#frame{position:relative}
+/* Canvas pixel size comes from the width/height attributes (256×240). main.js sets
+   style.width/height to an INTEGER multiple so scaling never blurs. */
+#game{image-rendering:pixelated;background:#5c94fc;display:block}
+#mute{position:absolute;top:6px;right:6px;font:16px sans-serif;background:#0008;color:#fff;
+      border:0;border-radius:6px;padding:4px 8px;cursor:pointer}
