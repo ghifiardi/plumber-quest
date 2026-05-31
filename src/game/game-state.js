@@ -3,7 +3,7 @@ export const STATES = {
   dying: 'dying', levelClear: 'level-clear', win: 'win', gameOver: 'game-over',
 };
 
-export function createGameState({ worldFactory, levelCount }) {
+export function createGameState({ worldFactory, levelCount, scriptTimes = { dying: 1.0, levelClear: 1.5 } }) {
   const gs = {
     state: STATES.title,
     session: { score: 0, coins: 0, lives: 3, levelIndex: 0 },
@@ -23,9 +23,16 @@ export function createGameState({ worldFactory, levelCount }) {
   gs.resume = () => { if (gs.state === STATES.paused) gs.state = STATES.playing; };
   gs.togglePause = () => { if (gs.state === STATES.playing) gs.pause(); else if (gs.state === STATES.paused) gs.resume(); };
 
-  // scripted-state helpers (real timing in Task 13; tests use finishScriptedForTest)
-  const enterScripted = (state) => { gs.state = state; gs._scriptT = 0; };
-  gs.finishScriptedForTest = () => { _completeScripted(); };
+  const enterScripted = (state) => {
+    gs.state = state; gs._scriptT = 0;
+    if (state === STATES.dying) {
+      gs.world.beginDeathAnim && gs.world.beginDeathAnim();
+    } else if (state === STATES.levelClear) {
+      gs.world.beginClearAnim && gs.world.beginClearAnim();
+      gs._clearStart = gs.world.timeRemaining;   // whole timer to convert
+      gs._clearAwarded = 0;                       // cumulative score awarded (bias-free)
+    }
+  };
 
   function _completeScripted() {
     if (gs.state === STATES.dying) {
@@ -38,6 +45,7 @@ export function createGameState({ worldFactory, levelCount }) {
       else { loadLevel(); gs.state = STATES.playing; }
     }
   }
+  gs.finishScriptedForTest = _completeScripted;   // keep Task 5 tests valid
 
   gs.update = (dt, intent) => {
     switch (gs.state) {
@@ -47,11 +55,24 @@ export function createGameState({ worldFactory, levelCount }) {
         else if (gs.world.flagReached) enterScripted(STATES.levelClear);
         break;
       }
-      case STATES.dying:
+      case STATES.dying: {
+        gs._scriptT += dt;
+        gs.world.updateScripted && gs.world.updateScripted(dt);
+        if (gs._scriptT >= scriptTimes.dying) _completeScripted();
+        break;
+      }
       case STATES.levelClear: {
         gs._scriptT += dt;
-        gs.world && gs.world.updateScripted && gs.world.updateScripted(dt);
-        // real duration gate added in Task 13; here scripts are completed explicitly
+        gs.world.updateScripted && gs.world.updateScripted(dt);
+        // Convert the ENTIRE remaining timer into score over scriptTimes.levelClear seconds,
+        // independent of the timer's magnitude. Award the delta to a rounded cumulative target
+        // so there is no per-frame rounding bias and the final total is exactly round(start*10).
+        const frac = Math.min(1, gs._scriptT / scriptTimes.levelClear);
+        const targetScore = Math.round(gs._clearStart * 10 * frac);
+        gs.session.score += (targetScore - gs._clearAwarded);
+        gs._clearAwarded = targetScore;
+        gs.world.timeRemaining = gs._clearStart * (1 - frac);
+        if (frac >= 1) _completeScripted();
         break;
       }
       default: break; // title/paused/win/game-over: no simulation
