@@ -2134,9 +2134,10 @@ test('flag -> level-clear: drains timer into score, EXACT total, then advances',
   gs.world.flagReached = true;
   gs.update(1/60, NONE);
   assertEqual(gs.state, STATES.levelClear);
+  const clearedWorld = gs.world;   // capture: _completeScripted() swaps in a fresh world on advance
   for (let i=0;i<200 && gs.state===STATES.levelClear;i++) gs.update(1/60, NONE);
   assertEqual(gs.session.score, base + Math.round(5 * 10), 'exact timer→score total (5*10=50), no rounding drift');
-  assertEqual(gs.world.timeRemaining, 0, 'timer fully drained');
+  assertEqual(clearedWorld.timeRemaining, 0, 'the CLEARED level timer fully drained (new world is separate)');
   assertEqual(gs.session.levelIndex, 1, 'advanced to next level');
   assertEqual(gs.state, STATES.playing);
 });
