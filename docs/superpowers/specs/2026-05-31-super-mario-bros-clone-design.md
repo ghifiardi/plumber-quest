@@ -104,8 +104,18 @@ If event routing in `main.js` grows cluttered, it graduates to a dedicated `even
 - Fixed-timestep accumulator, **`FIXED_DT = 1/60` second** (seconds, not ticks),
   used consistently everywhere.
 - Per animation frame: accumulate real elapsed time, run
-  `world.update(FIXED_DT, intent)` zero-or-more times, then one
+  `gameState.update(FIXED_DT, intent)` zero-or-more times, then one
   `renderer.draw(world, camera, alpha)`.
+
+### Top-level update path
+The loop never calls `world.update()` directly — different states behave differently
+(`title`, `paused`, `dying`, `level-clear` must not run normal physics):
+
+1. The loop calls **`gameState.update(dt, intent)`** each fixed step.
+2. `gameState` calls **`world.update(dt, intent)` only during `playing`**; `dying`
+   and `level-clear` run their own scripted-update path (§5); other states run no
+   simulation.
+3. `world.update()` remains the **sole** entry point for current-level simulation.
 - **Max-frame-time clamp** prevents the spiral of death after a tab stall.
 - **Interpolation:** before each fixed update, each entity snapshots its previous
   transform (`prev`). `renderer.draw(..., alpha)` lerps `prev → current` for smooth
@@ -142,13 +152,29 @@ Stable, deterministic order within a step:
 | `paused`      | no  | no  | overlay; resumes cleanly |
 | `dying`       | scripted | no | death "pop" via own clock; input ignored |
 | `level-clear` | scripted | no | flagpole sequence via own clock; then advance |
+| `win`         | no  | no  | campaign complete (after 1-3); press to return to title |
 | `game-over`   | no  | no  | out of lives ⇒ back to title |
 
 - `dying` and `level-clear` use a **separate scripted-update path** with their own
   clock/animation progression — distinct from world physics.
-- `level-clear` advances to the next `world-1-*`, or to a **win screen** after 1-3.
+- `level-clear` advances to the next `world-1-*`, or to **`win`** after 1-3.
 - **Flagpole:** scripted **timer→score conversion** — remaining seconds drain into
   score over ~1–2s, *then* `level-clear` advances.
+
+### Death & campaign rules
+- **Timer reaching zero** triggers `dying`.
+- **Falling** below the level bottom triggers `dying`.
+- Hit while `small` triggers `dying`.
+- **After `dying`:** decrement lives, then **reload the current level** if lives
+  remain, else enter `game-over`.
+- **Entering from `title`** resets persistent session values: **score, coins, lives,
+  and level index**.
+
+### Ownership of values
+- **`game-state.js` owns persistent session values:** score, coins, lives, current
+  level index. These survive level reloads and transitions.
+- **`world.js` owns current-level values:** the countdown timer and all entities.
+  Rebuilt on every level load/reload.
 
 ## 6. Entities & mechanics
 
@@ -168,10 +194,13 @@ Stable, deterministic order within a step:
 - Koopa/shell: stretch goal only.
 
 ### Mechanics → events
-Resolved from `aabb` facts; each emits a semantic event consumed by audio + score:
-`coin-collected`, `block-hit`, `brick-broken` (only when `big`), `powerup-spawned`,
-`powerup-collected`, `enemy-stomped`, `player-hit`, `player-died`, `fireball-fired`,
-`flag-reached`.
+Resolved from `aabb` facts. **Simulation applies the gameplay consequence first**
+(mutate score/coins/lives/timer, break the brick, spawn the item, change power state),
+**then emits a semantic event** purely for **external side effects** such as audio.
+Events do not carry gameplay logic; nothing downstream mutates the world.
+Events: `coin-collected`, `block-hit`, `brick-broken` (any **non-small** player,
+including fire), `powerup-spawned`, `powerup-collected`, `enemy-stomped`,
+`player-hit`, `player-died`, `fireball-fired`, `flag-reached`.
 
 ## 7. Level format (`level-format.js`)
 
@@ -180,17 +209,25 @@ Authored as an array of ASCII rows. Char set:
 | Char | Meaning |
 |------|---------|
 | `X`  | ground (solid) |
-| `#`  | brick (solid; breakable when player is `big`) |
-| `?`  | question block (solid; payload after parsing) |
-| `M`  | question-block **variant** carrying a power-up payload (parsed as `?` + payload) |
+| `#`  | brick (solid; **breaks for any non-small player**, including fire) |
+| `?`  | one-shot **coin** block (solid) |
+| `U`  | one-shot **adaptive upgrade** block: yields **mushroom while player is `small`, flower otherwise** (solid) |
 | `o`  | coin |
 | `T`  | solid pipe tile (collidable) |
 | `\|` | pipe decoration (visual only, non-collidable) |
 | `G`  | goomba spawn |
 | `P`  | player spawn (**exactly one required**) |
-| `F`  | finish trigger (**≥1 required**); flagpole rendered procedurally |
+| `F`  | finish trigger (**exactly one required**); flagpole rendered procedurally |
 | `-`  | empty sky |
 | ` `  | space — alias for `-` (formatting convenience) |
+
+**Block lifecycle:** after a `?` or `U` block is bumped, it becomes an internal
+**used-block** tile (solid, inert, distinct sprite). `#` bricks either break (non-small
+player) or bounce (small player).
+
+**Normalization:** spawn and trigger characters (`P`, `G`, `F`) **normalize to empty
+tiles after parsing** — they place an entity / register the finish trigger, then leave
+no solid tile behind.
 
 ### Typed output
 The parser converts rows → typed level:
@@ -198,19 +235,22 @@ The parser converts rows → typed level:
 ```js
 {
   width, height,
-  tiles: [[ { tile: 'question', payload: 'mushroom' }, ... ], ...],
+  tiles: [[ { tile: 'upgrade-block' }, { tile: 'coin-block' }, ... ], ...],
   entitySpawns: [ { type: 'goomba', x, y }, ... ],
-  playerSpawn: { x, y },
+  playerSpawn: { x, y },              // exactly one
   bounds: { left, right, top, bottom },
-  finish: [ { x, y }, ... ]   // ≥1 trigger
+  finish: { x, y }                    // exactly one trigger
 }
 ```
 
-Tile payloads are preserved explicitly (e.g. `{ tile: 'question', payload: 'mushroom' }`).
+Tile kinds are explicit (`'coin-block'`, `'upgrade-block'`, `'brick'`, `'ground'`,
+`'pipe'`, `'pipe-deco'`, `'used-block'`, `'empty'`). The `upgrade-block` payload
+(mushroom vs flower) is **decided at bump time** from the player's power state, not
+baked into level data.
 
 ### Validation (throws at load)
-- No player spawn, or **more than one** `P` (duplicate-spawn check).
-- No finish trigger (invalid finish layout).
+- Not **exactly one** `P` (zero or duplicate player spawn).
+- Not **exactly one** `F` (zero or multiple finish triggers — invalid finish layout).
 - Ragged rows (inconsistent width).
 - Unknown characters.
 
@@ -279,14 +319,28 @@ Additional required tests:
 
 ## 12. Build sequence (high level)
 
-1. Project skeleton: `index.html`, `style.css`, `main.js`, empty modules, test page.
+**TDD is incremental:** each implementation slice **begins with its corresponding §10
+tests** (red → green → refactor), not a single test phase at the end. A **final
+green-test gate** still runs the full §10 suite deterministically before review/deploy.
+
+1. Project skeleton: `index.html`, `style.css`, `main.js`, empty modules, HTTP-served
+   test page with the run-all harness.
 2. Engine core: `loop.js` (fixed-step + interpolation), `input.js` (edges), `aabb.js`.
-3. `world.js` + `tiles.js` + `level-format.js` + `world-1-1`; player movement & jump.
-4. Collision resolution order; lifecycle queue; events; `game-state.js`.
-5. Enemies (Goomba), pickups, power state machine, projectiles (fireball cap).
-6. `camera.js`, `renderer.js`, `sprites.js` (procedural art), HUD, parallax.
-7. `audio.js` (SFX + music, lifecycle rules), event routing in `main.js`.
-8. Flagpole sequence, timer→score, level progression, `world-1-2`, `world-1-3`, win screen.
-9. Tests (all §10 priorities) green and deterministic.
-10. README + LICENSE; code review; GitHub Pages deploy.
-11. *(Stretch)* Koopa/shell enemy.
+   *(Tests: §10.1–10.3, 10.8.)*
+3. **`game-state.js` skeleton** (state machine + session values + transitions) **before
+   world integration**, so the update path (§4) and state rules (§5) exist up front.
+   *(Tests: §10.5 timer/state behavior; death/campaign transitions.)*
+4. `level-format.js` + `tiles.js` + `world-1-1`; `world.js` with movement & jump.
+   *(Tests: §10.6 validation incl. duplicate-`P`/multiple-`F`; §10.2 jump.)*
+5. Collision resolution order; lifecycle queue; events.
+   *(Tests: §10.4 lifecycle; §10.9 same-step pickup+enemy order; §10.7 determinism.)*
+6. Enemies (Goomba), pickups, power state machine, projectiles (fireball cap).
+   *(Tests: §10.10 fireball cap & decrement-on-removal.)*
+7. `camera.js`, `renderer.js`, `sprites.js` (procedural art), HUD, parallax.
+   *(Tests: §10.12 renderer does not mutate world.)*
+8. `audio.js` (SFX + music, lifecycle rules), event routing in `main.js`.
+9. Flagpole sequence, timer→score, level progression, `world-1-2`, `world-1-3`, win screen.
+   *(Tests: §10.11 timer→score & next-level transition.)*
+10. **Final green-test gate:** full §10 suite passes deterministically.
+11. README + LICENSE; code review; GitHub Pages deploy.
+12. *(Stretch)* Koopa/shell enemy — with its own tests first.
