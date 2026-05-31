@@ -183,9 +183,10 @@ Create `style.css`:
 
 ```css
 html,body{margin:0;height:100%;background:#000;display:flex;align-items:center;justify-content:center}
-#frame{position:relative;image-rendering:pixelated}
-#game{image-rendering:pixelated;width:min(100vw,calc(240px * 4 * (256/240)));max-width:100vw;
-      height:auto;aspect-ratio:256/240;background:#5c94fc;display:block}
+#frame{position:relative}
+/* Canvas pixel size comes from the width/height attributes (256×240). main.js sets
+   style.width/height to an INTEGER multiple so scaling never blurs. */
+#game{image-rendering:pixelated;background:#5c94fc;display:block}
 #mute{position:absolute;top:6px;right:6px;font:16px sans-serif;background:#0008;color:#fff;
       border:0;border-radius:6px;padding:4px 8px;cursor:pointer}
 ```
@@ -240,9 +241,12 @@ test('falling box lands on floor and reports landedOnTop', () => {
 });
 
 test('upward box hits ceiling and reports hitFromBelow with tile coords', () => {
-  const ceil = (c, r) => r === 5;            // tile top at y=80, bottom at y=96
-  const box = { x: 32, y: 98, w: 12, h: 16, vx: 0, vy: -60 };
+  const ceil = (c, r) => r === 5;            // tile spans y=80..96 (row*16 .. row*16+16)
+  // Box top must actually cross into row 5. Start at y=98 (top in row 6), move up 3px
+  // (vy=-180 * 1/60 = -3) to y=95 -> top in row 5 -> collision.
+  const box = { x: 32, y: 98, w: 12, h: 16, vx: 0, vy: -180 };
   const facts = resolveAgainstTiles(box, ceil, 16, 1/60);
+  assertEqual(box.y, 96, 'snapped to bottom edge of ceiling tile');
   assertEqual(box.vy, 0);
   assert(facts.hitFromBelow);
   assertEqual(facts.tilesHitBelow[0].row, 5);
@@ -475,17 +479,37 @@ and one render with interpolation alpha.
 Create `tests/loop.test.js`:
 
 ```js
-import { test, assertEqual, assertClose } from './harness.js';
+import { test, assertEqual, assertClose, assertDeepEqual } from './harness.js';
 import { createLoop } from '../src/engine/loop.js';
 import { FIXED_DT } from '../src/engine/constants.js';
 
-test('advance runs the right number of fixed steps', () => {
+test('advance runs the right number of fixed steps with real alpha', () => {
   let steps = 0, renders = 0, lastAlpha = -1;
   const loop = createLoop({ step: () => steps++, render: a => { renders++; lastAlpha = a; } });
   loop.advance(FIXED_DT * 2.5);
   assertEqual(steps, 2, 'two whole steps');
   assertEqual(renders, 1, 'one render');
-  assertClose(lastAlpha, 0.5, 1e-6);          // leftover 0.5 step
+  assertClose(lastAlpha, 0.5, 1e-6);          // leftover 0.5 step -> real interpolation alpha
+});
+
+test('beforeFrame runs once before steps; afterFrame once after, with step count', () => {
+  const order = []; let afterN = -1;
+  const loop = createLoop({
+    beforeFrame: () => order.push('before'),
+    step: () => order.push('step'),
+    afterFrame: (n) => { order.push('after'); afterN = n; },
+    render: () => order.push('render'),
+  });
+  loop.advance(FIXED_DT * 2);
+  assertDeepEqual(order, ['before','step','step','after','render']);
+  assertEqual(afterN, 2, 'afterFrame receives step count');
+});
+
+test('beforeFrame/afterFrame still fire on a zero-step frame', () => {
+  let before = 0, after = 0, steps = 0;
+  const loop = createLoop({ beforeFrame:()=>before++, step:()=>steps++, afterFrame:()=>after++, render:()=>{} });
+  loop.advance(FIXED_DT * 0.3);                // not enough to step
+  assertEqual(steps, 0); assertEqual(before, 1); assertEqual(after, 1);
 });
 
 test('frame-time clamp prevents spiral of death', () => {
@@ -507,14 +531,19 @@ Create `src/engine/loop.js`:
 ```js
 import { FIXED_DT } from './constants.js';
 
-export function createLoop({ step, render, maxSteps = 5, dt = FIXED_DT }) {
+// beforeFrame() runs once per rendered frame BEFORE any fixed steps (e.g. input.beginFrame()).
+// afterFrame(stepCount) runs once AFTER all fixed steps (e.g. drain world events → audio).
+// render(alpha) runs last with the true interpolation alpha in [0,1).
+export function createLoop({ beforeFrame, step, afterFrame, render, maxSteps = 5, dt = FIXED_DT }) {
   let acc = 0;
   function advance(realDt) {
     acc += realDt;
+    if (beforeFrame) beforeFrame();            // before stepping, even on 0-step frames
     let n = 0;
     while (acc >= dt && n < maxSteps) { step(); acc -= dt; n++; }
     if (n === maxSteps) acc = 0;               // drop backlog after clamp
-    render(acc / dt);                          // interpolation alpha in [0,1)
+    if (afterFrame) afterFrame(n);             // after all steps, even on 0-step frames
+    render(acc / dt);                          // real interpolation alpha
   }
   function start(rafProvider = requestAnimationFrame) {
     let last = null;
@@ -579,6 +608,24 @@ test('title resets session values and starts at title', () => {
   assertEqual(gs.session.levelIndex, 0);
 });
 
+test('startGame fully resets the session (score/coins/lives/level)', () => {
+  const gs = createGameState({ worldFactory: stubWorldFactory(), levelCount: 3 });
+  gs.session.score = 5000; gs.session.coins = 12; gs.session.lives = 1; gs.session.levelIndex = 2;
+  gs.startGame();
+  assertEqual(gs.session.score, 0);
+  assertEqual(gs.session.coins, 0);
+  assertEqual(gs.session.lives, 3);
+  assertEqual(gs.session.levelIndex, 0);
+  assertEqual(gs.state, STATES.playing);
+});
+
+test('togglePause flips playing<->paused only', () => {
+  const gs = createGameState({ worldFactory: stubWorldFactory(), levelCount: 3 });
+  gs.startGame();
+  gs.togglePause(); assertEqual(gs.state, STATES.paused);
+  gs.togglePause(); assertEqual(gs.state, STATES.playing);
+});
+
 test('world.update only runs during playing', () => {
   const gs = createGameState({ worldFactory: stubWorldFactory(), levelCount: 3 });
   gs.startGame();                       // title -> playing, loads level 0
@@ -641,15 +688,17 @@ export function createGameState({ worldFactory, levelCount }) {
     _scriptT: 0,
   };
 
+  // worldFactory receives (levelIndex, session) so the world can mutate session counters.
   const loadLevel = () => { gs.world = worldFactory(gs.session.levelIndex, gs.session); };
+  const resetSession = () => { gs.session.score = 0; gs.session.coins = 0; gs.session.lives = 3; gs.session.levelIndex = 0; };
 
-  gs.toTitle = () => {
-    gs.session.score = 0; gs.session.coins = 0; gs.session.lives = 3; gs.session.levelIndex = 0;
-    gs.state = STATES.title; gs.world = null;
-  };
-  gs.startGame = () => { gs.session.levelIndex = 0; loadLevel(); gs.state = STATES.playing; };
+  gs.toTitle = () => { resetSession(); gs.state = STATES.title; gs.world = null; };
+  // Start a brand-new run: full session reset, then load level 0. Used from title/game-over/win.
+  gs.newSession = () => { resetSession(); loadLevel(); gs.state = STATES.playing; };
+  gs.startGame = gs.newSession;
   gs.pause = () => { if (gs.state === STATES.playing) gs.state = STATES.paused; };
   gs.resume = () => { if (gs.state === STATES.paused) gs.state = STATES.playing; };
+  gs.togglePause = () => { if (gs.state === STATES.playing) gs.pause(); else if (gs.state === STATES.paused) gs.resume(); };
 
   // scripted-state helpers (real timing in Task 13; tests use finishScriptedForTest)
   const enterScripted = (state) => { gs.state = state; gs._scriptT = 0; };
@@ -860,7 +909,9 @@ Create `tests/player-jump.test.js`:
 ```js
 import { test, assert, assertClose } from './harness.js';
 import { createWorld } from '../src/game/world.js';
+import { createPlayer, controlPlayer } from '../src/game/player.js';
 import { parseLevel } from '../src/levels/level-format.js';
+import * as C from '../src/engine/constants.js';
 import { FIXED_DT } from '../src/engine/constants.js';
 
 // flat ground with player standing on it; F required by parser.
@@ -889,6 +940,37 @@ test('full jump (held) rises higher than cut jump (released early)', () => {
   run(wCut, [PRESS_JUMP, HOLD_JUMP, HOLD_JUMP, { ...NONE, jumpReleased:true }, ...Array(27).fill(NONE)]);
 
   assert(wFull.peakRise > wCut.peakRise, `full ${wFull.peakRise} should exceed cut ${wCut.peakRise}`);
+});
+
+// --- coyote-time & jump-buffer at the player-module level (precise, no world timing noise) ---
+const noIntent = { left:false,right:false,run:false,jumpHeld:false,jumpPressed:false,jumpReleased:false,firePressed:false };
+const pressIntent = { ...noIntent, jumpPressed:true, jumpHeld:true };
+
+test('coyote-time: jump succeeds shortly after leaving ground', () => {
+  const p = createPlayer({ x:0, y:0 });
+  p.onGround = true; controlPlayer(p, noIntent, FIXED_DT);   // refresh coyote
+  p.onGround = false; controlPlayer(p, noIntent, FIXED_DT);  // 1 frame airborne (< COYOTE)
+  controlPlayer(p, pressIntent, FIXED_DT);                   // press within coyote window
+  assert(p.vy < 0, `should jump during coyote window (vy=${p.vy})`);
+});
+
+test('coyote-time: jump fails long after leaving ground', () => {
+  const p = createPlayer({ x:0, y:0 });
+  p.onGround = true; controlPlayer(p, noIntent, FIXED_DT);
+  p.onGround = false;
+  for (let i = 0; i < 10; i++) controlPlayer(p, noIntent, FIXED_DT); // > COYOTE elapsed
+  controlPlayer(p, pressIntent, FIXED_DT);
+  assert(p.vy > 0, `no jump after coyote expired; still falling (vy=${p.vy})`);
+});
+
+test('jump-buffer: press just before landing fires jump on landing', () => {
+  const p = createPlayer({ x:0, y:0 });
+  p.onGround = false;
+  controlPlayer(p, pressIntent, FIXED_DT);     // buffered while airborne -> no jump yet
+  assert(p.vy > 0, 'still falling, jump buffered not fired');
+  p.onGround = true;                            // land within buffer window
+  controlPlayer(p, { ...noIntent, jumpHeld:true }, FIXED_DT);
+  assert(p.vy < 0, `buffered jump fired on landing (vy=${p.vy})`);
 });
 ```
 
@@ -935,31 +1017,32 @@ export function solidAt(tiles, col, row) {
   return isSolidTile(tiles[row][col].tile);
 }
 
-// Apply consequence when player bumps a tile from below. Mutates tiles, returns events.
-// playerPower: 'small' | 'big' | 'fire'
-export function bumpTile(tiles, col, row, playerPower, spawn) {
-  const cell = tiles[row][col];
-  const events = [];
+// Apply the consequence when the player bumps a tile from below.
+// Mutates tiles + session counters FIRST (via world.addCoin/addScore/spawnPickup),
+// THEN emits a semantic event for external side effects (spec §6 ordering).
+export function bumpTile(world, col, row) {
+  const cell = world.tiles[row][col];
+  const power = world.player.power;
   switch (cell.tile) {
     case 'coin-block':
       cell.tile = 'used-block';
-      events.push({ type: 'coin-collected', fromBlock: true });
+      world.addCoin();                                   // consequence first
+      world.emit({ type: 'coin-collected', fromBlock: true });
       break;
     case 'upgrade-block': {
       cell.tile = 'used-block';
-      const kind = playerPower === 'small' ? 'mushroom' : 'flower';
-      spawn({ type: kind, x: col * 16, y: row * 16 - 16 });
-      events.push({ type: 'powerup-spawned', kind });
+      const kind = power === 'small' ? 'mushroom' : 'flower';
+      world.spawnPickup(kind, col * 16, row * 16 - 16);  // real entity via injected factory
+      world.emit({ type: 'powerup-spawned', kind });
       break;
     }
     case 'brick':
-      if (playerPower === 'small') { events.push({ type: 'block-hit' }); }   // bounce, no break
-      else { cell.tile = 'empty'; events.push({ type: 'brick-broken' }); }
+      if (power === 'small') { world.emit({ type: 'block-hit' }); }      // bounce, no break
+      else { cell.tile = 'empty'; world.addScore(50); world.emit({ type: 'brick-broken' }); }
       break;
     default:
-      events.push({ type: 'block-hit' });
+      world.emit({ type: 'block-hit' });
   }
-  return events;
 }
 ```
 
@@ -1003,35 +1086,78 @@ export function controlPlayer(p, intent, dt) {
 }
 ```
 
-- [ ] **Step 5: Write `world.js`**
+- [ ] **Step 5: Create stub interaction modules (so `world.js` imports resolve)**
+
+`world.js` imports the ordered-interaction helpers and pickup factories. Create minimal
+stubs now; Tasks 8–10 replace them with real logic.
+
+Create `src/game/pickups.js`:
+```js
+// Stub — real pickups + coin-tile collection land in Task 9.
+export function makeMushroom(x, y) { return { type:'mushroom', x, y, w:14, h:14, vx:0, vy:0, prevX:x, prevY:y, alive:true, update(){} }; }
+export function makeFlower(x, y)   { return { type:'flower',   x, y, w:14, h:14, vx:0, vy:0, prevX:x, prevY:y, alive:true, update(){} }; }
+export function resolvePickups(/* world */) {}
+```
+
+Create `src/game/enemies-resolve.js`:
+```js
+// Stub — real player↔enemy resolution lands in Task 8.
+export function resolveEnemies(/* world */) {}
+```
+
+Create `src/game/projectiles.js`:
+```js
+// Stub — real fireballs land in Task 10.
+export function tryFire(/* world, intent */) {}
+export function resolveProjectiles(/* world */) {}
+```
+
+- [ ] **Step 6: Write `world.js`**
 
 Create `src/game/world.js`:
 
 ```js
-import { FIXED_DT, LEVEL_TIME } from '../engine/constants.js';
+import { LEVEL_TIME } from '../engine/constants.js';
 import { resolveAgainstTiles } from '../engine/aabb.js';
 import { solidAt, bumpTile } from './tiles.js';
 import { createPlayer, controlPlayer } from './player.js';
+import { makeMushroom, makeFlower, resolvePickups } from './pickups.js';
+import { resolveEnemies } from './enemies-resolve.js';
+import { tryFire, resolveProjectiles } from './projectiles.js';
 
-export function createWorld(level, { time = LEVEL_TIME } = {}) {
+const COIN_SCORE = 200;
+
+export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
   const w = {
     level, tiles: level.tiles, bounds: level.bounds,
     player: createPlayer(level.playerSpawn),
     entities: [], events: [],
+    session: session || { score: 0, coins: 0, lives: 3, levelIndex: 0 },
     timeRemaining: time, timeUp: false, fell: false, flagReached: false, playerDied: false,
-    peakRise: 0,                          // for jump tests: max height risen from spawn
+    peakRise: 0,                          // jump tests: max height risen from spawn
     _spawnQ: [], _removeQ: [],
   };
+  w.player.fireballs = 0;
   const baselineY = level.playerSpawn.y;
 
-  w.spawn = (e) => { w._spawnQ.push(e); };
+  w.spawn  = (e) => { w._spawnQ.push(e); };
   w.remove = (e) => { w._removeQ.push(e); };
+  // simulation-owned scoring (mutated BEFORE events are emitted — spec §6)
+  w.addScore = (n) => { w.session.score += n; };
+  w.addCoin  = () => { w.session.coins += 1; w.session.score += COIN_SCORE; };
+  // pickup factory injection keeps tiles.js decoupled from pickups.js
+  w.spawnPickup = (kind, x, y) => { w.spawn(kind === 'mushroom' ? makeMushroom(x, y) : makeFlower(x, y)); };
+  // events accumulate across all fixed steps; drained once per rendered frame
+  w.emit = (ev) => { w.events.push(ev); };
+  w.drainEvents = () => { const e = w.events; w.events = []; return e; };
 
   const solid = (c, r) => solidAt(w.tiles, c, r);
 
   w.update = (dt, intent) => {
-    w.events.length = 0;
-    // snapshot prev transforms
+    // NOTE: events are NOT cleared here. They accumulate across every fixed step of a
+    // rendered frame and are removed only via drainEvents() (called once per frame).
+
+    // snapshot prev transforms for interpolation
     w.player.prevX = w.player.x; w.player.prevY = w.player.y;
     for (const e of w.entities) { e.prevX = e.x; e.prevY = e.y; }
 
@@ -1039,50 +1165,55 @@ export function createWorld(level, { time = LEVEL_TIME } = {}) {
     w.timeRemaining -= dt;
     if (w.timeRemaining <= 0) { w.timeRemaining = 0; w.timeUp = true; }
 
-    // --- player ---
+    // === stage 1: tiles (player vs tilemap) ===
     controlPlayer(w.player, intent, dt);
-    const before = w.player.vy;
+    tryFire(w, intent);                                  // spawn fireball on firePressed (Task 10)
     const facts = resolveAgainstTiles(w.player, solid, 16, dt);
     w.player.onGround = facts.landedOnTop;
-    if (facts.hitFromBelow) {
-      for (const t of facts.tilesHitBelow) {
-        w.events.push(...bumpTile(w.tiles, t.col, t.row, w.player.power, w.spawn));
-      }
-    }
-    void before;
+    if (facts.hitFromBelow) for (const t of facts.tilesHitBelow) bumpTile(w, t.col, t.row);
     w.peakRise = Math.max(w.peakRise, baselineY - w.player.y);
-
-    // fall out of world
     if (w.player.y > w.bounds.bottom) w.fell = true;
 
-    // flag trigger (single)
-    const f = w.level.finish;
-    if (w.player.x + w.player.w > f.x && w.player.x < f.x + 16 &&
-        w.player.y + w.player.h > f.y && w.player.y < w.bounds.bottom) {
-      w.flagReached = true;
-    }
-
-    // --- entities (Task 8+ behaviors) ---
+    // entity self-updates
     for (const e of w.entities) if (e.update) e.update(w, dt);
 
-    // lifecycle flush: removals first, then additions
-    if (w._removeQ.length) { w.entities = w.entities.filter(e => !w._removeQ.includes(e)); w._removeQ.length = 0; }
+    // === ordered interaction pass (spec §4): pickups -> enemies -> projectiles -> finish ===
+    resolvePickups(w);
+    resolveEnemies(w);
+    resolveProjectiles(w);
+    resolveFinish(w);
+
+    // lifecycle flush: run onRemove hooks, remove, THEN add (new entities update next step)
+    if (w._removeQ.length) {
+      for (const e of w._removeQ) if (e.onRemove) e.onRemove(w);
+      w.entities = w.entities.filter(e => !w._removeQ.includes(e));
+      w._removeQ.length = 0;
+    }
     if (w._spawnQ.length) { w.entities.push(...w._spawnQ); w._spawnQ.length = 0; }
   };
+
+  function resolveFinish(world) {
+    if (world.flagReached) return;
+    const f = world.level.finish, p = world.player;
+    if (p.x + p.w > f.x && p.x < f.x + 16 && p.y + p.h > f.y && p.y < world.bounds.bottom) {
+      world.flagReached = true; world.emit({ type: 'flag-reached' });
+    }
+  }
 
   return w;
 }
 ```
 
-- [ ] **Step 6: Run to verify it passes**
+- [ ] **Step 7: Run to verify it passes**
 
-Reload `http://localhost:8000/tests/`. Expected: player-jump + world-timer PASS. (Spec §10.2, §10.5.)
+Reload `http://localhost:8000/tests/`. Expected: player-jump (incl. coyote/buffer) +
+world-timer PASS. (Spec §10.2, §10.5.)
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: world core with player movement, jump, timer, tile bumps"
+git commit -m "feat: world core (session-owned scoring, accumulating events, ordered pass, lifecycle hooks)"
 ```
 
 ---
@@ -1099,7 +1230,7 @@ git commit -m "feat: world core with player movement, jump, timer, tile bumps"
 Create `tests/enemy-collision.test.js`:
 
 ```js
-import { test, assert, assertEqual } from './harness.js';
+import { test, assert } from './harness.js';
 import { createWorld } from '../src/game/world.js';
 import { parseLevel } from '../src/levels/level-format.js';
 import { spawnGoomba } from '../src/game/enemies.js';
@@ -1107,38 +1238,40 @@ import { spawnGoomba } from '../src/game/enemies.js';
 const LVL = parseLevel(['P-----F', 'XXXXXXX'], { tile: 16 });
 const NONE = { right:false,left:false,run:false,jumpHeld:false,jumpPressed:false,jumpReleased:false,firePressed:false };
 
-test('stomping from above kills goomba and bounces player', () => {
+test('stomping from above kills goomba, emits enemy-stomped, bounces player', () => {
   const w = createWorld(LVL);
-  const g = spawnGoomba(32, 0); w.entities.push(g);
+  const g = spawnGoomba(32, 2); w.entities.push(g);
   w.player.x = 32; w.player.y = -20; w.player.vy = 200;   // falling onto goomba
-  for (let i = 0; i < 10 && g.alive; i++) w.update(1/60, NONE);
+  let stomped = false;
+  for (let i = 0; i < 12 && g.alive; i++) {
+    w.update(1/60, NONE);
+    if (w.drainEvents().some(e => e.type === 'enemy-stomped')) stomped = true;
+  }
   assert(!g.alive, 'goomba dead');
-  assert(w.events.some?.(e=>e.type==='enemy-stomped') || true);
+  assert(stomped, 'enemy-stomped event was emitted (not a vacuous assertion)');
   assert(w.player.vy < 0, 'player bounced up');
 });
 
-test('side contact while small kills player', () => {
+test('side contact while small kills the player', () => {
   const w = createWorld(LVL);
-  const g = spawnGoomba(40, 16 - g0h()); w.entities.push(g);
-  w.player.x = 24; w.player.y = 16 - 16; w.player.invuln = 0;
-  w.player.vy = 0;
+  const g = spawnGoomba(40, 2); w.entities.push(g);
+  w.player.x = 24; w.player.y = 2; w.player.invuln = 0; w.player.vy = 0;
   for (let i = 0; i < 30 && !w.playerDied; i++) w.update(1/60, { ...NONE, right:true });
-  assert(w.playerDied, 'player died on side contact while small');
+  assert(w.playerDied, 'small player died on side contact');
 });
-function g0h(){ return 14; }
 
-test('same-step pickup+enemy resolves pickup before enemy (collision order)', () => {
-  // Verified indirectly: a mushroom and goomba both overlapping the player in one step
-  // must grow the player (pickup first) so the subsequent enemy contact is non-lethal.
+test('side contact while big demotes to small instead of dying', () => {
   const w = createWorld(LVL);
-  const g = spawnGoomba(32, 2); w.entities.push(g);
-  w.spawn({ type:'mushroom', x:32, y:0, w:14, h:14, vx:0, vy:0, alive:true,
-            update(world){ /* handled by pickups in Task 9; here it just sits */ } });
-  // flush spawn
-  w.update(1/60, NONE);
-  assert(true); // placeholder assertion replaced once pickups land in Task 9
+  const g = spawnGoomba(40, 2); w.entities.push(g);
+  w.player.power = 'big'; w.player.x = 24; w.player.y = 2; w.player.invuln = 0; w.player.vy = 0;
+  for (let i = 0; i < 30 && !w.playerDied; i++) w.update(1/60, { ...NONE, right:true });
+  assert(!w.playerDied, 'big player survives one hit');
+  assert(w.player.power === 'small', 'demoted to small');
 });
 ```
+
+(The same-step pickup-before-enemy ordering case — spec §10.9 — lives in Task 9, where
+real pickups exist.)
 
 Create `tests/lifecycle.test.js`:
 
@@ -1166,6 +1299,27 @@ test('remove during update flushes before additions', () => {
   w.update(1/60, NONE);
   assertEqual(w.entities.filter(e=>e.type==='a').length, 0);
   assertEqual(w.entities.filter(e=>e.type==='b').length, 1);
+});
+
+test('spawned entity does NOT update in the step it was spawned', () => {
+  const w = createWorld(LVL);
+  let childUpdates = 0;
+  const parent = { type:'p', x:0,y:0,w:1,h:1,alive:true, done:false,
+    update(world){ if(!this.done){ world.spawn({ type:'c', x:0,y:0,w:1,h:1, alive:true, update(){ childUpdates++; } }); this.done = true; } } };
+  w.entities.push(parent);
+  w.update(1/60, NONE);
+  assertEqual(childUpdates, 0, 'child not updated in its spawn step');
+  w.update(1/60, NONE);
+  assertEqual(childUpdates, 1, 'child updates on the next step');
+});
+
+test('onRemove hook fires once when an entity is removed', () => {
+  const w = createWorld(LVL);
+  let removed = 0;
+  const e = { type:'e', x:0,y:0,w:1,h:1,alive:true, onRemove(){ removed++; }, update(world){ world.remove(this); } };
+  w.entities.push(e);
+  w.update(1/60, NONE);
+  assertEqual(removed, 1, 'onRemove called exactly once during flush');
 });
 ```
 
@@ -1200,96 +1354,52 @@ export function spawnGoomba(x, y) {
         if (!solid(aheadCol, belowRow)) this.vx = -this.vx;
       }
     },
-    stomp(world) { this.alive = false; this.vx = 0; this.squashT = 0.25; world.events.push({ type:'enemy-stomped' }); },
+    stomp(world) { this.alive = false; this.vx = 0; this.squashT = 0.25; world.emit({ type:'enemy-stomped' }); },
   };
 }
 ```
 
-- [ ] **Step 4: Add player↔entity collision pass to `world.js` in fixed order**
+- [ ] **Step 4: Replace the `enemies-resolve.js` stub with real resolution**
 
-In `src/game/world.js`, inside `w.update`, **after** the entity `update` loop and
-**before** the lifecycle flush, insert the ordered interaction pass:
-
-```js
-    // --- ordered interactions: pickups -> enemies -> projectiles -> finish (finish handled above) ---
-    resolvePickups(w);     // stub now (Task 8), real logic in Task 9
-    resolveEnemies(w);
-    resolveProjectiles(w); // stub now (Task 8), real logic in Task 10
-```
-
-Add these helper imports at the top of `world.js`:
-
-```js
-import { resolveEnemies } from './enemies-resolve.js';
-import { resolvePickups } from './pickups.js';
-import { resolveProjectiles } from './projectiles.js';
-```
-
-Create `src/game/enemies-resolve.js`:
+The ordered interaction pass and lifecycle hooks already live in `world.js` (Task 7).
+Here we only fill in the enemy stub. Overwrite `src/game/enemies-resolve.js`:
 
 ```js
 import { overlap } from '../engine/aabb.js';
 
+const STOMP_SCORE = 100;
+
+// Player vs goombas. Stomp (came from above) kills + bounces; otherwise damages player.
 export function resolveEnemies(w) {
   const p = w.player;
   for (const e of w.entities) {
     if (e.type !== 'goomba' || !e.alive) continue;
     if (!overlap(p, e)) continue;
-    const falling = p.vy > 0 && (p.prevY + p.h) <= e.y + 4;   // came from above
-    if (falling) { e.stomp(w); p.vy = -240; }                  // bounce
+    const cameFromAbove = p.vy > 0 && (p.prevY + p.h) <= e.y + 4;
+    if (cameFromAbove) { e.stomp(w); w.addScore(STOMP_SCORE); p.vy = -240; }   // consequence then event in stomp()
     else damagePlayer(w);
   }
 }
 
+// Power step-down with brief invulnerability; death only when already small.
 export function damagePlayer(w) {
   const p = w.player;
   if (p.invuln > 0) return;
-  if (p.power === 'fire') { p.power = 'big'; p.invuln = 1.2; w.events.push({ type:'player-hit' }); }
-  else if (p.power === 'big') { p.power = 'small'; p.invuln = 1.2; w.events.push({ type:'player-hit' }); }
-  else { w.playerDied = true; w.events.push({ type:'player-died' }); }
+  if (p.power === 'fire') { p.power = 'big'; p.invuln = 1.2; w.emit({ type:'player-hit' }); }
+  else if (p.power === 'big') { p.power = 'small'; p.invuln = 1.2; w.emit({ type:'player-hit' }); }
+  else { w.playerDied = true; w.emit({ type:'player-died' }); }
 }
 ```
 
-To keep Task 8 green before Tasks 9–10 exist, create **stub** modules now:
-
-`src/game/pickups.js`:
-```js
-export function resolvePickups(/* w */) {}
-```
-`src/game/projectiles.js`:
-```js
-export function resolveProjectiles(/* w */) {}
-```
-
-(These are fleshed out in Tasks 9 and 10; the stubs keep imports valid.)
-
-- [ ] **Step 5: Fix the enemy-collision test's spawn ordering**
-
-In `tests/enemy-collision.test.js`, replace the third test body with a concrete order
-check now that `damagePlayer`/pickups exist as stubs — assert the lethal-side case and
-defer the pickup-priority assertion to Task 9 (see Task 9 Step 1, which owns §10.9).
-Replace the third `test(...)` with:
-
-```js
-test('side contact while big demotes instead of killing', () => {
-  const w = createWorld(LVL);
-  const g = spawnGoomba(40, 2); w.entities.push(g);
-  w.player.power = 'big'; w.player.x = 30; w.player.y = 2; w.player.invuln = 0;
-  for (let i = 0; i < 5; i++) w.update(1/60, { ...NONE, right:true });
-  assert(w.player.power === 'small' || w.player.power === 'big');
-  assert(!w.playerDied, 'big player not killed by one hit');
-});
-```
-
-- [ ] **Step 6: Run to verify it passes**
+- [ ] **Step 5: Run to verify it passes**
 
 Reload. Expected: enemy-collision + lifecycle PASS. (Spec §10.3, §10.4.)
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: goomba behavior, stomp/side resolution, ordered interactions, lifecycle"
+git commit -m "feat: goomba behavior, stomp/side resolution, score, lifecycle hooks"
 ```
 
 ---
@@ -1314,12 +1424,14 @@ import { makeMushroom, makeFlower, makeCoinPickup } from '../src/game/pickups.js
 const LVL = parseLevel(['P-----F', 'XXXXXXX'], { tile: 16 });
 const NONE = { right:false,left:false,run:false,jumpHeld:false,jumpPressed:false,jumpReleased:false,firePressed:false };
 
-test('mushroom grows small player to big', () => {
+test('mushroom grows small player to big and awards score', () => {
   const w = createWorld(LVL);
+  const score0 = w.session.score;
   w.entities.push(makeMushroom(w.player.x, w.player.y));
   w.update(1/60, NONE);
   assertEqual(w.player.power, 'big');
-  assert(w.events.some(e=>e.type==='powerup-collected'));
+  assertEqual(w.session.score, score0 + 1000, 'mushroom scored exactly +1000');
+  assert(w.drainEvents().some(e=>e.type==='powerup-collected'));
 });
 
 test('flower upgrades big player to fire', () => {
@@ -1330,22 +1442,36 @@ test('flower upgrades big player to fire', () => {
   assertEqual(w.player.power, 'fire');
 });
 
-test('coin pickup increments via event', () => {
+test('coin pickup increments session.coins and score', () => {
   const w = createWorld(LVL);
+  const coins0 = w.session.coins, score0 = w.session.score;
   w.entities.push(makeCoinPickup(w.player.x, w.player.y));
   w.update(1/60, NONE);
-  assert(w.events.some(e=>e.type==='coin-collected'));
+  assertEqual(w.session.coins, coins0 + 1);
+  assertEqual(w.session.score, score0 + 200);
+  assert(w.drainEvents().some(e=>e.type==='coin-collected'));
 });
 
-test('SAME-STEP pickup before enemy: mushroom makes lethal hit non-lethal (§10.9)', () => {
+test('coin TILE the player overlaps is collected and cleared', () => {
+  const lvl = parseLevel(['Po---F', 'XXXXXX'], { tile: 16 });   // coin 'o' at row0 col1
+  const w = createWorld(lvl);
+  w.player.x = 16; w.player.y = 0;                               // overlap the coin tile
+  const coins0 = w.session.coins;
+  w.update(1/60, NONE);
+  assertEqual(w.session.coins, coins0 + 1, 'coin tile collected');
+  assertEqual(w.tiles[0][1].tile, 'empty', 'coin tile cleared after collection');
+});
+
+test('SAME-STEP pickup before enemy: mushroom makes a lethal hit non-lethal (§10.9)', () => {
   const w = createWorld(LVL);
   // small player overlapped by BOTH a mushroom and a goomba in the same step.
   w.player.power = 'small'; w.player.invuln = 0; w.player.x = 32; w.player.y = 2; w.player.vy = 0;
-  const g = spawnGoomba(32, 2); w.entities.push(g);
+  w.entities.push(spawnGoomba(32, 2));
   w.entities.push(makeMushroom(32, 2));
   w.update(1/60, NONE);
-  // pickups resolve first -> big; then enemy demotes big->small, not death.
-  assert(!w.playerDied, 'pickup-first ordering prevented death');
+  // pickups resolve FIRST -> big; then enemy contact demotes big->small (not death).
+  assert(!w.playerDied, 'pickup-before-enemy ordering prevented death');
+  assertEqual(w.player.power, 'small', 'grew to big, then demoted to small by the same-step hit');
 });
 ```
 
@@ -1362,6 +1488,7 @@ import { overlap, resolveAgainstTiles } from '../engine/aabb.js';
 import { solidAt } from './tiles.js';
 
 const MUSH_SPEED = 50;
+const POWERUP_SCORE = 1000;
 
 function physicsItem(extra) {
   return {
@@ -1380,16 +1507,38 @@ export function makeMushroom(x,y){ return physicsItem({ type:'mushroom', x, y, v
 export function makeFlower(x,y){ return physicsItem({ type:'flower', x, y, static:true }); }
 export function makeCoinPickup(x,y){ return physicsItem({ type:'coin-pickup', x, y, static:true, w:10, h:14 }); }
 
-// Runs BEFORE enemies/projectiles in the ordered interaction pass (spec §10.9).
+// Pickups stage of the ordered pass — runs BEFORE enemies/projectiles (spec §4, §10.9).
+// Handles (a) authored coin TILES the player overlaps and (b) item ENTITIES.
+// Mutates session counters FIRST, then emits events.
 export function resolvePickups(w) {
   const p = w.player;
+
+  // (a) coin tiles under the player's AABB
+  const c0 = Math.floor(p.x / 16), c1 = Math.floor((p.x + p.w - 1) / 16);
+  const r0 = Math.floor(p.y / 16), r1 = Math.floor((p.y + p.h - 1) / 16);
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    if (r < 0 || r >= w.tiles.length || c < 0 || c >= w.tiles[0].length) continue;
+    if (w.tiles[r][c].tile === 'coin') {
+      w.tiles[r][c] = { tile: 'empty' };
+      w.addCoin();
+      w.emit({ type: 'coin-collected' });
+    }
+  }
+
+  // (b) item entities
   for (const it of w.entities) {
     if (!it.alive) continue;
     if (it.type !== 'mushroom' && it.type !== 'flower' && it.type !== 'coin-pickup') continue;
     if (!overlap(p, it)) continue;
-    if (it.type === 'coin-pickup') { w.events.push({ type:'coin-collected' }); }
-    else if (it.type === 'mushroom') { if (p.power === 'small') p.power = 'big'; w.events.push({ type:'powerup-collected', kind:'mushroom' }); }
-    else if (it.type === 'flower') { p.power = (p.power === 'small') ? 'big' : 'fire'; w.events.push({ type:'powerup-collected', kind:'flower' }); }
+    if (it.type === 'coin-pickup') {
+      w.addCoin(); w.emit({ type:'coin-collected' });
+    } else if (it.type === 'mushroom') {
+      if (p.power === 'small') p.power = 'big';
+      w.addScore(POWERUP_SCORE); w.emit({ type:'powerup-collected', kind:'mushroom' });
+    } else { // flower
+      p.power = (p.power === 'small') ? 'big' : 'fire';
+      w.addScore(POWERUP_SCORE); w.emit({ type:'powerup-collected', kind:'flower' });
+    }
     it.alive = false; w.remove(it);
   }
 }
@@ -1468,6 +1617,8 @@ import { overlap, resolveAgainstTiles } from '../engine/aabb.js';
 import { solidAt } from './tiles.js';
 import { FIREBALL_SPEED, MAX_FIREBALLS } from '../engine/constants.js';
 
+const STOMP_SCORE = 100;
+
 export function makeFireball(x, y, dir) {
   return {
     type:'fireball', x, y, w:8, h:8, vx: dir*FIREBALL_SPEED, vy:0,
@@ -1481,53 +1632,50 @@ export function makeFireball(x, y, dir) {
       if (f.sideBlocked || this.life <= 0) this._expire(world);
     },
     _expire(world) { if (this.alive) { this.alive = false; world.remove(this); } },
+    // The ONLY place the active count is decremented — the lifecycle removal path.
+    // _expire's `alive` guard ensures a fireball is queued for removal once, so this runs once.
+    onRemove(world) { world.player.fireballs = Math.max(0, world.player.fireballs - 1); },
   };
 }
 
-// Spawn from player on firePressed (called from world after control).
+// Spawn from player on firePressed. Increments the active count at spawn time; the cap
+// is checked against player.fireballs (kept correct by increment-on-spawn / onRemove-decrement).
 export function tryFire(world, intent) {
   const p = world.player;
   if (!intent.firePressed || p.power !== 'fire') return;
   if (p.fireballs >= MAX_FIREBALLS) return;
-  const fb = makeFireball(p.x + (p.facing>0?p.w:-8), p.y + 4, p.facing || 1);
   p.fireballs += 1;
-  world.spawn(fb);
+  world.spawn(makeFireball(p.x + (p.facing > 0 ? p.w : -8), p.y + 4, p.facing || 1));
+  world.emit({ type: 'fireball-fired' });
 }
 
-// Ordered interaction pass: fireball vs enemies; decrement count on removal.
+// Projectiles stage: fireball vs enemies. Does NOT touch the active count (no recalculation).
 export function resolveProjectiles(w) {
   for (const fb of w.entities) {
     if (fb.type !== 'fireball' || !fb.alive) continue;
     for (const e of w.entities) {
       if (e.type === 'goomba' && e.alive && overlap(fb, e)) {
-        e.stomp(w); fb._expire(w); w.events.push({ type:'fireball-fired', hit:true });
+        e.stomp(w); w.addScore(STOMP_SCORE); fb._expire(w);
+        break;
       }
     }
   }
-  // reconcile count to actual live fireballs (covers expiry/removal paths)
-  w.player.fireballs = w.entities.filter(e => e.type==='fireball' && e.alive).length;
 }
 ```
 
-- [ ] **Step 4: Wire firing + count into `world.js`**
+(Firing and `player.fireballs = 0` initialization are already wired in `world.js` from
+Task 7 — `tryFire(w, intent)` runs each step and `w.player.fireballs = 0` is set at
+creation. No further world changes needed here.)
 
-In `src/game/world.js`: initialize `fireballs` on the player and call `tryFire` each step.
-- Add to the player object creation usage: after `createPlayer`, set `w.player.fireballs = 0;`
-- Add import: `import { tryFire } from './projectiles.js';`
-- In `w.update`, immediately after `controlPlayer(...)` and before tile resolution, add:
-  ```js
-      tryFire(w, intent);
-  ```
-
-- [ ] **Step 5: Run to verify it passes**
+- [ ] **Step 4: Run to verify it passes**
 
 Reload. Expected: fireball tests PASS. (Spec §10.10.)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
-git commit -m "feat: fireballs with active cap and decrement-on-removal"
+git commit -m "feat: fireballs with active cap and decrement-on-removal hook"
 ```
 
 ---
@@ -1542,7 +1690,7 @@ git commit -m "feat: fireballs with active cap and decrement-on-removal"
 Create `tests/determinism.test.js`:
 
 ```js
-import { test, assertEqual } from './harness.js';
+import { test, assert, assertEqual } from './harness.js';
 import { createWorld } from '../src/game/world.js';
 import { parseLevel } from '../src/levels/level-format.js';
 import { spawnGoomba } from '../src/game/enemies.js';
@@ -1565,16 +1713,24 @@ function fingerprint(w) {
   });
 }
 
-function play() {
+function play(intents) {
   const lvl = parseLevel(ROWS, { tile: 16 });
   const w = createWorld(lvl);
   for (const sp of lvl.entitySpawns) if (sp.type==='goomba') w.entities.push(spawnGoomba(sp.x, sp.y));
-  for (const it of script()) w.update(1/60, it);
+  for (const it of intents) w.update(1/60, it);
   return fingerprint(w);
 }
 
-test('same intent script yields identical world fingerprint', () => {
-  assertEqual(play(), play());
+test('same intent script yields identical fingerprint across 3 runs', () => {
+  const a = play(script()), b = play(script()), c = play(script());
+  assertEqual(a, b);
+  assertEqual(b, c);
+});
+
+test('a different intent script yields a different fingerprint (not a constant)', () => {
+  const moving = play(script());
+  const idle = play(Array(71).fill(NONE));   // never move
+  assert(moving !== idle, 'fingerprint must actually reflect the intent stream');
 });
 ```
 
@@ -1608,21 +1764,34 @@ import { createWorld } from '../src/game/world.js';
 import { parseLevel } from '../src/levels/level-format.js';
 import { createRenderer } from '../src/render/renderer.js';
 import { createCamera } from '../src/engine/camera.js';
+import { spawnGoomba } from '../src/game/enemies.js';
+import { makeMushroom } from '../src/game/pickups.js';
 
-const LVL = parseLevel(['P----F', 'XXXXXX'], { tile: 16 });
+const LVL = parseLevel(['P--o-F', 'XXXXXX'], { tile: 16 });
 
-function serialize(w){ return JSON.stringify({ x:w.player.x,y:w.player.y,t:w.timeRemaining,ents:w.entities.length }); }
+// Full-world snapshot: player, all entities, the entire tilemap, flags, and session.
+function snapshot(w){
+  return JSON.stringify({
+    player: { x:w.player.x, y:w.player.y, vx:w.player.vx, vy:w.player.vy, power:w.player.power, prevX:w.player.prevX, prevY:w.player.prevY, invuln:w.player.invuln },
+    time: w.timeRemaining,
+    flags: [w.timeUp, w.fell, w.flagReached, w.playerDied],
+    session: { ...w.session },
+    tiles: w.tiles.map(row => row.map(c => c.tile)),
+    ents: w.entities.map(e => [e.type, e.x, e.y, e.vx, e.vy, e.alive]),
+  });
+}
 
-test('renderer.draw does not mutate world state (§10.12)', () => {
+test('renderer.draw mutates nothing in the full world (§10.12)', () => {
   const w = createWorld(LVL);
-  // offscreen canvas so no DOM needed
+  w.entities.push(spawnGoomba(48, 2));    // exercise entity-render path
+  w.entities.push(makeMushroom(32, 2));
   const canvas = document.createElement('canvas'); canvas.width=256; canvas.height=240;
   const renderer = createRenderer(canvas);
   const cam = createCamera({ viewW:256, viewH:240, bounds:w.bounds });
-  const before = serialize(w);
+  const before = snapshot(w);
   renderer.draw(w, cam, 0.5, { score:0, coins:0, lives:3, levelIndex:0 });
-  renderer.draw(w, cam, 0.0, { score:0, coins:0, lives:3, levelIndex:0 });
-  assertEqual(serialize(w), before, 'world unchanged after draws');
+  renderer.draw(w, cam, 0.0, { score:1, coins:2, lives:3, levelIndex:0 });
+  assertEqual(snapshot(w), before, 'player, entities, tilemap, flags, session all unchanged after draws');
 });
 
 test('camera follows player and clamps to bounds', () => {
@@ -1694,10 +1863,13 @@ export function buildSprites(scale = 1) {
     ground: grid(['BBBBBB','BbbbbB','bbbbbb','bbbbbb','bbbbbb','bbbbbb'], scale),
     pipe: grid(['GGGGGG','GggggG','GGGGGG','.GggG.','.GggG.','.GggG.'], scale),
     mushroom: grid(['.RRRR.','RWRWRR','RRRRRR','.SSSS.','.SSSS.'], scale),
-    flower: grid(['.O O.','OYOYO','.OOO.','.GG..','.GG..'.replaceAll(' ','.')], scale),
-    flag: grid(['.G','.G','GG','.G','.G','.G','.G','.G'], scale),
+    flower: grid(['.OYO.','OYOYO','.OOO.','..G..','..G..'], scale),
+    fireball: grid(['.OO.','OYYO','OYYO','.OO.'], scale),
   };
 }
+// NOTE: sprites are authored as tiny pixel grids (6–10px). The renderer draws each one
+// scaled to its destination size (tiles → 16×16, entities → their w/h), so on-screen
+// sprites align to the 16px tile grid. The flagpole is drawn procedurally (no sprite).
 ```
 
 - [ ] **Step 5: Write `renderer.js`**
@@ -1720,39 +1892,42 @@ export function createRenderer(canvas) {
 
   function lerp(a, b, t){ return a + (b - a) * t; }
 
+  const ENT_SPRITE = { goomba:'goomba', mushroom:'mushroom', flower:'flower', 'coin-pickup':'coin', fireball:'fireball' };
+
   function draw(world, cam, alpha, session) {
-    cam.follow(interp(world.player, alpha));
+    cam.follow(interp(world.player, alpha));      // mutates cam only, never world
     // sky
     ctx.fillStyle = '#5c94fc'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    // parallax hills (camera-derived only)
+    // parallax hills (derived purely from cam.x — no renderer-owned animation state)
     ctx.fillStyle = '#3a3';
     const off = -(cam.x * 0.5) % 80;
     for (let x = off - 80; x < canvas.width + 80; x += 80) {
       ctx.beginPath(); ctx.arc(x+40, 200, 30, Math.PI, 0); ctx.fill();
     }
-    // tiles
+    // tiles — each sprite scaled to a full TILE×TILE cell
     const t = world.tiles;
     const c0 = Math.max(0, Math.floor(cam.x / TILE));
     const c1 = Math.min(t[0].length-1, Math.ceil((cam.x + canvas.width) / TILE));
     for (let row=0; row<t.length; row++) for (let col=c0; col<=c1; col++) {
       const key = SPRITE_FOR[t[row][col].tile]; if (!key) continue;
-      ctx.drawImage(sprites[key], Math.round(col*TILE - cam.x), Math.round(row*TILE));
+      ctx.drawImage(sprites[key], Math.round(col*TILE - cam.x), Math.round(row*TILE), TILE, TILE);
     }
-    // flag
-    ctx.drawImage(sprites.flag, Math.round(world.level.finish.x - cam.x), Math.round(world.level.finish.y));
-    // entities
+    // flagpole — drawn procedurally from the single finish point down to the ground
+    const fx = Math.round(world.level.finish.x - cam.x), fy = Math.round(world.level.finish.y);
+    ctx.fillStyle = '#dcdcdc'; ctx.fillRect(fx + 7, fy, 2, world.bounds.bottom - fy);
+    ctx.fillStyle = '#2ecc40'; ctx.beginPath();
+    ctx.moveTo(fx + 7, fy + 2); ctx.lineTo(fx - 5, fy + 6); ctx.lineTo(fx + 7, fy + 10); ctx.fill();
+    // entities — scaled to each entity's own w/h
     for (const e of world.entities) {
-      const key = e.type==='goomba'?'goomba':e.type==='mushroom'?'mushroom':e.type==='flower'?'flower'
-        :e.type==='coin-pickup'?'coin':e.type==='fireball'?'coin':null;
-      if (!key) continue;
+      const key = ENT_SPRITE[e.type]; if (!key) continue;
       const p = interp(e, alpha);
-      ctx.drawImage(sprites[key], Math.round(p.x - cam.x), Math.round(p.y));
+      ctx.drawImage(sprites[key], Math.round(p.x - cam.x), Math.round(p.y), e.w, e.h);
     }
-    // player
-    const pk = world.player.power==='small'?'playerSmall':'playerBig';
-    if (!(world.player.invuln>0 && Math.floor(world.player.invuln*20)%2)) {
+    // player — scaled to player w/h; blink during invulnerability
+    const pk = world.player.power === 'small' ? 'playerSmall' : 'playerBig';
+    if (!(world.player.invuln > 0 && Math.floor(world.player.invuln * 20) % 2)) {
       const pp = interp(world.player, alpha);
-      ctx.drawImage(sprites[pk], Math.round(pp.x - cam.x), Math.round(pp.y));
+      ctx.drawImage(sprites[pk], Math.round(pp.x - cam.x), Math.round(pp.y), world.player.w, world.player.h);
     }
     drawHUD(session, world);
   }
@@ -2076,63 +2251,64 @@ Add import. Reload. Expected: FAIL — level modules missing.
 
 - [ ] **Step 3: Author levels (declarative data only)**
 
-Create `src/levels/world-1-1.js` (15 rows tall, ground on bottom two rows; widths must be equal — keep every string the same length):
+Create `src/levels/world-1-1.js` (every row is exactly 40 cols; one `P`, one `F` — pre-validated):
 
 ```js
-// Each row MUST be the same length. 'P' once, 'F' once.
+// world-1-1 — 12 rows × 40 cols (validated: equal widths, exactly one P and one F)
 export default [
   '----------------------------------------',
   '----------------------------------------',
+  '------------?--#U#----------------------',
   '----------------------------------------',
-  '----------------------------------------',
-  '------------?--#U#-------------------F--',
-  '----------------------------------------',
-  '----------------------------------------',
-  '-------------------------oo-------------',
-  '----------?----------TT----G------------',
-  '------G---------#----TT------------#----',
-  'P-------------------TTT------------------',
-  'XXXXXXXXXXXXXXXXXXXXXXXXX-XXXXXXXXXXXXXXX',
-  'XXXXXXXXXXXXXXXXXXXXXXXXX-XXXXXXXXXXXXXXX',
+  '----------------------------oo----------',
+  '----------?-----------------------------',
+  '------G---------#-------G----------#----',
+  '---------------------TTT----------------',
+  '--------------------TTTT----------------',
+  'P-------------------TTTT--------------F-',
+  'XXXXXXXXXXXXXXXXXXXXXXXX--XXXXXXXXXXXXXX',
+  'XXXXXXXXXXXXXXXXXXXXXXXX--XXXXXXXXXXXXXX',
 ];
 ```
 
 Create `src/levels/world-1-2.js`:
 
 ```js
+// world-1-2 — 10 rows × 40 cols (validated)
 export default [
-  '----------------------------------------',
   '----------------------------------------',
   '--------------U-------------------------',
   '----------------------------------------',
-  '------?#?-------------oo----------------',
+  '------?#?------------oo-----------------',
   '----------------G---------#####---------',
   '-----------G--------------------------F-',
-  '------#-------TT-------------G-----------',
+  '------#-------TT-------------G----------',
   'P-----------TTTT--------#---------------',
-  'XXXXXXXX-XXXXXXXXXXX-XXXXXXXXXXXXXXXXXXXX',
-  'XXXXXXXX-XXXXXXXXXXX-XXXXXXXXXXXXXXXXXXXX',
+  'XXXXXXXX-XXXXXXXXXXX-XXXXXXXXXXXXXXXXXXX',
+  'XXXXXXXX-XXXXXXXXXXX-XXXXXXXXXXXXXXXXXXX',
 ];
 ```
 
 Create `src/levels/world-1-3.js`:
 
 ```js
+// world-1-3 — 9 rows × 40 cols (validated)
 export default [
   '----------------------------------------',
   '-------------------------------------F--',
   '-----------U-----#-#-#------------------',
   '----------------------------------------',
   '-----?--------G------G------G-----------',
-  '--------#####-------#####------#####-----',
+  '--------#####-------#####------#####----',
   'P---------------------------------------',
-  'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXXXXXXXXX',
-  'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXXXXXXXXX',
+  'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXXXXXXXX',
+  'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXXXXXXXX',
 ];
 ```
 
-After creating each, the Step-1 test confirms it parses. If a row-length error throws,
-pad the offending row with `-` to match.
+The Task-15 Step-1 test (`tests/levels-load.test.js`) parses all three and confirms a
+player spawn + finish. These rows were length-validated when the plan was written — do
+not edit them without re-checking every row is 40 chars with exactly one `P` and one `F`.
 
 - [ ] **Step 4: Rewrite `main.js` to wire everything**
 
@@ -2158,9 +2334,11 @@ const renderer = createRenderer(canvas);
 const input = createInput(); input.attach(window);
 const audio = createAudio();
 
-function worldFactory(levelIndex) {
+// worldFactory receives the SAME session object game-state owns, so simulation scoring
+// (coins/score) mutates persistent state directly (spec §6; Findings #2/#5).
+function worldFactory(levelIndex, session) {
   const lvl = parseLevel(LEVELS[levelIndex], { tile: 16 });
-  const w = createWorld(lvl);
+  const w = createWorld(lvl, { session });
   for (const s of lvl.entitySpawns) if (s.type === 'goomba') w.entities.push(spawnGoomba(s.x, s.y));
   return w;
 }
@@ -2168,40 +2346,68 @@ function worldFactory(levelIndex) {
 const gs = createGameState({ worldFactory, levelCount: LEVELS.length });
 const cam = createCamera({ viewW: canvas.width, viewH: canvas.height, bounds: { left:0, top:0, right:99999, bottom:240 } });
 
-// mute button works before audio init
+// --- integer canvas scaling: crisp pixels, never fractional blur (Finding: sizing) ---
+function resize() {
+  const s = Math.max(1, Math.floor(Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height)));
+  canvas.style.width = canvas.width * s + 'px';
+  canvas.style.height = canvas.height * s + 'px';
+}
+window.addEventListener('resize', resize); resize();
+
+// mute toggle works before audio init
 const muteBtn = document.getElementById('mute');
 muteBtn.addEventListener('click', () => { audio.setMuted(!audio.isMuted()); muteBtn.textContent = audio.isMuted() ? '🔇' : '🔊'; });
 
-// first interaction unlocks audio + starts game from title
-function begin() { audio.unlock(); if (gs.state === STATES.title || gs.state === STATES.gameOver || gs.state === STATES.win) { gs.startGame(); cam.bounds = gs.world.bounds; audio.startMusic(); } }
-window.addEventListener('keydown', begin, { once:false });
+// pause toggle (P / Escape) with music follow
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    gs.togglePause();
+    if (gs.state === STATES.paused) audio.stopMusic();
+    else if (gs.state === STATES.playing) audio.startMusic();
+  }
+});
+
+// first interaction unlocks audio + (re)starts a fresh run from title/game-over/win
+function begin() {
+  audio.unlock();
+  if (gs.state === STATES.title || gs.state === STATES.gameOver || gs.state === STATES.win) {
+    gs.startGame();                 // full session reset (Finding #7)
+    cam.bounds = gs.world.bounds;
+    audio.startMusic();
+  }
+}
+window.addEventListener('keydown', begin);
 window.addEventListener('pointerdown', () => audio.unlock());
 
 let prevState = gs.state;
 const loop = createLoop({
+  beforeFrame() { input.beginFrame(); },           // open input frame BEFORE any fixed steps
   step() {
-    const intent = input.consumeIntent();
-    if (intent.jumpPressed && gs.state === STATES.playing && gs.world.player.onGround) audio.play('jump');
-    if (gs.state === STATES.paused) return;
-    gs.update(1/60, intent);
-    if (gs.world) { gs.world.events.forEach(e => audio.playEvent(e.type)); cam.bounds = gs.world.bounds; }
-    // music lifecycle on transitions
+    const intent = input.consumeIntent();          // edge delivered to first step this frame
+    const jumpedFromGround = intent.jumpPressed && gs.state === STATES.playing &&
+                             gs.world && gs.world.player.onGround;
+    gs.update(1/60, intent);                       // gates by state internally (paused = no-op)
+    if (jumpedFromGround) audio.play('jump');
+    if (gs.world) cam.bounds = gs.world.bounds;
+  },
+  afterFrame() {                                   // once per frame, after ALL steps
+    if (gs.world) for (const e of gs.world.drainEvents()) audio.playEvent(e.type);
     if (gs.state !== prevState) {
       if ([STATES.dying, STATES.gameOver, STATES.win, STATES.title].includes(gs.state)) audio.stopMusic();
       if (gs.state === STATES.playing && prevState !== STATES.paused) audio.startMusic();
       prevState = gs.state;
     }
   },
-  render() {
-    input.beginFrame();
-    if (gs.world) renderer.draw(gs.world, cam, /*alpha*/0, gs.session);
+  render(alpha) {                                  // real interpolation alpha
+    if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session);
   },
 });
 loop.start();
 ```
 
-Note: `render` calls `input.beginFrame()` once per displayed frame; `step` calls
-`consumeIntent()` (edge delivered to first step that frame — spec §4/§10.8).
+Event flow (Findings #1/#3): `beforeFrame` opens the input frame, fixed `step`s run and
+accumulate events in the world, then `afterFrame` **drains events once** to audio — so
+events never replay across steps or scripted states. `render` receives the true alpha.
 
 - [ ] **Step 5: Run tests + manual smoke**
 
