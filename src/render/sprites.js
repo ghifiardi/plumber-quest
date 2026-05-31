@@ -1,5 +1,36 @@
-const PALETTE = { R:'#d33', r:'#a22', S:'#fc9', s:'#e96', B:'#852', b:'#621',
-  G:'#3a3', g:'#283', Y:'#fd3', y:'#ca2', W:'#fff', K:'#000', O:'#e80', C:'#fc4', M:'#c0392b' };
+// ============================================================================
+// Original pixel-art sprite atlas (100% original art — no third-party assets).
+//
+// Each sprite is authored as a small ASCII grid where every character maps to a
+// PALETTE colour. Grids include a black outline (K), a base colour, a darker
+// shadow tone, and a lighter highlight, so on-screen sprites read as shaded,
+// outlined art rather than flat blobs.
+//
+// Animation: the renderer selects which frame to draw as a PURE function of
+// read-only entity state plus world.animClock. Nothing here stores per-frame
+// state — frames are pre-rendered once at build time.
+// ============================================================================
+
+const PALETTE = {
+  // red hero / mushroom
+  R:'#e23b2e', r:'#a3261c', H:'#ff6a5c',
+  // skin
+  S:'#f7c69b', s:'#d89a6a',
+  // brown / overalls / ground
+  B:'#8a5a2b', b:'#5e3a17', N:'#3a6ea5', n:'#27507a', // N/n = blue overalls
+  // greens (goomba is brown; pipe + scenery use greens)
+  G:'#3fb24b', g:'#268a32', e:'#1c6325',
+  // yellows / coins / blocks
+  Y:'#ffd23f', y:'#caa01e', O:'#e8a020', o:'#b97a13',
+  // cyan / fire accents
+  C:'#7fdfff', c:'#34a9d6',
+  // white / black / shadow grey
+  W:'#ffffff', K:'#101014', D:'#2a2a33',
+  // goomba browns
+  T:'#9c6a3c', t:'#6f4824', M:'#3a2410',
+  // fire hero (white + red)
+  F:'#ffffff', f:'#d8d8e0',
+};
 
 function grid(rows, scale = 1) {
   const h = rows.length, w = rows[0].length;
@@ -12,31 +43,637 @@ function grid(rows, scale = 1) {
   return cv;
 }
 
+// ----------------------------------------------------------------------------
+// HERO — small (16x16), big (16x24), fire (16x24, white+red palette).
+// Authored facing RIGHT; renderer flips horizontally for facing < 0.
+// Poses: stand, walkA, walkB, jump.
+// ----------------------------------------------------------------------------
+
+// --- SMALL hero (16 wide x 16 tall) ---
+const SMALL_STAND = [
+  '......KKKK......',
+  '.....KRRRRK.....',
+  '.....KRRRRK.....',
+  '....KSSSKSK.....',
+  '...KSsSSKSSK....',
+  '...KSSsSKSSK....',
+  '...KKSSSKKK.....',
+  '..KRRNRRRK......',
+  '.KRRRNRRRRK.....',
+  '.KRNNNNNNRK.....',
+  '.KSNYNNYNSK.....',
+  '.KSNNNNNNSK.....',
+  '..KNNN.NNNK.....',
+  '..KbbK.Kbbk.....',
+  '.Kbbbk.Kbbbk....',
+  '.KKKK...KKKK....',
+];
+const SMALL_WALKA = [
+  '......KKKK......',
+  '.....KRRRRK.....',
+  '.....KRRRRK.....',
+  '....KSSSKSK.....',
+  '...KSsSSKSSK....',
+  '...KSSsSKSSK....',
+  '...KKSSSKKK.....',
+  '..KRRNRRRKK.....',
+  '.KRRRNRRRRRK....',
+  'KSRNNNNNNRRK....',
+  'KSSNYNNYNNK.....',
+  '.KNNNNNNNK......',
+  '..KNNNNNNK......',
+  '...KbbKKbbK.....',
+  '..Kbbbk.Kbbk....',
+  '..KKKK...KKK....',
+];
+const SMALL_WALKB = [
+  '......KKKK......',
+  '.....KRRRRK.....',
+  '.....KRRRRK.....',
+  '....KSSSKSK.....',
+  '...KSsSSKSSK....',
+  '...KSSsSKSSK....',
+  '...KKSSSKKK.....',
+  '....KRRNRRRKK...',
+  '...KRRRNRRRRK.S.',
+  '...KRNNNNNNRKSSK',
+  '...KSNYNNYNNSSK.',
+  '....KNNNNNNK....',
+  '....KNNNNNNK....',
+  '....KbbKKbbK....',
+  '...Kbbk.Kbbbk...',
+  '...KKK...KKKK...',
+];
+const SMALL_JUMP = [
+  '....KKKK..S.....',
+  '...KRRRRK.SK....',
+  '...KRRRRKKSK....',
+  '..KSSSKSKSSK....',
+  '.KSsSSKSSRRK....',
+  '.KSSsSKSRRRK....',
+  '.KKSSSKKRRK.....',
+  'KRRNRRRRRK......',
+  'KRRRNRRRRK......',
+  'KRNNNNNNRK......',
+  'KSNYNNYNNK......',
+  '.KNNNNNNK.......',
+  '.KNNNNNNK.......',
+  '.KbbKKbbK.......',
+  'Kbbbk.Kbbk......',
+  'KKKK...KKK......',
+];
+
+// --- BIG hero (16 wide x 24 tall) ---
+const BIG_STAND = [
+  '.....KKKKK......',
+  '....KRRRRRK.....',
+  '...KRRRRRRRK....',
+  '...KSSSKSSSK....',
+  '..KSsSSKSSSK....',
+  '..KSSsSKSSSK....',
+  '..KSSSSSKSSK....',
+  '..KKSSSSSKK.....',
+  '...KSSSSSK......',
+  '..KRRNRRRRK.....',
+  '.KRRRNNRRRRK....',
+  'KRRRNNNNRRRRK...',
+  'KSRNNNNNNNRSK...',
+  'KSSNNYNNYNNSSK..',
+  'KSSNNNNNNNNSSK..',
+  '.KNNNNNNNNNNK...',
+  '..KNNNNNNNNK....',
+  '..KNNNN.NNNK....',
+  '..KNNNK.KNNK....',
+  '..KSSK...KSSK...',
+  '..KbbK...KbbK...',
+  '.KbbbK...KbbbK..',
+  '.KbbbK...KbbbK..',
+  '.KKKKK...KKKKK..',
+];
+const BIG_WALKA = [
+  '.....KKKKK......',
+  '....KRRRRRK.....',
+  '...KRRRRRRRK....',
+  '...KSSSKSSSK....',
+  '..KSsSSKSSSK....',
+  '..KSSsSKSSSK....',
+  '..KSSSSSKSSK....',
+  '..KKSSSSSKK.....',
+  '...KSSSSSK......',
+  '..KRRNRRRRKK....',
+  '.KRRRNNRRRRRK...',
+  'KSRRNNNNRRRRK...',
+  'KSSNNNNNNNRK....',
+  '.KSNNYNNYNNK....',
+  '.KNNNNNNNNNK....',
+  '..KNNNNNNNNK....',
+  '..KNNNNNNNK.....',
+  '...KNNNKNNNK....',
+  '...KSSK.KNNK....',
+  '..KbbbK.KSSK....',
+  '.Kbbbk..KbbK....',
+  '.Kbbk...KbbbK...',
+  '.KKK....KbbbK...',
+  '........KKKKK...',
+];
+const BIG_WALKB = [
+  '.....KKKKK......',
+  '....KRRRRRK.....',
+  '...KRRRRRRRK....',
+  '...KSSSKSSSK....',
+  '..KSsSSKSSSK....',
+  '..KSSsSKSSSK....',
+  '..KSSSSSKSSK....',
+  '..KKSSSSSKK.....',
+  '...KSSSSSK..S...',
+  '..KRRNRRRRKSSK..',
+  '.KRRRNNRRRRRSK..',
+  '.KRRNNNNRRRRK...',
+  '..KNNNNNNNRK....',
+  '..KNNYNNYNNK....',
+  '..KNNNNNNNNK....',
+  '..KNNNNNNNNK....',
+  '...KNNNNNNK.....',
+  '...KNNKKNNK.....',
+  '..KNNK.KNNK.....',
+  '..KSSK.KSSK.....',
+  '.KbbbK.KbbbK....',
+  '.Kbbk...Kbbk....',
+  '.KKK.....KKK....',
+  '................',
+];
+const BIG_JUMP = [
+  '....KKKKK...S...',
+  '...KRRRRRK.SK...',
+  '..KRRRRRRRKSK...',
+  '..KSSSKSSSKSK...',
+  '.KSsSSKSSSKK....',
+  '.KSSsSKSSRRK....',
+  '.KSSSSSKRRRK....',
+  '.KKSSSSSRRK.....',
+  'KRRSSSSSRK......',
+  'KRRRNRRRRK......',
+  'KRRRNNRRRRK.....',
+  'KSRNNNNRRRK.....',
+  'KSSNNNNNNRK.....',
+  '.KNNYNNYNNK.....',
+  '.KNNNNNNNNK.....',
+  '..KNNNNNNK......',
+  '..KNNNNNNK......',
+  '.KNNNKKNNNK.....',
+  '.KSSK..KSSK.....',
+  'KbbbK..KbbbK....',
+  'Kbbk....Kbbk....',
+  'KKK......KKK....',
+  '................',
+  '................',
+];
+
+// --- FIRE hero (16 wide x 24 tall) — white outfit, red cap/accents ---
+const FIRE_STAND = [
+  '.....KKKKK......',
+  '....KRRRRRK.....',
+  '...KRRRRRRRK....',
+  '...KSSSKSSSK....',
+  '..KSsSSKSSSK....',
+  '..KSSsSKSSSK....',
+  '..KSSSSSKSSK....',
+  '..KKSSSSSKK.....',
+  '...KSSSSSK......',
+  '..KRRFRRRRK.....',
+  '.KRRRFFRRRRK....',
+  'KRRRFFFFRRRRK...',
+  'KFRFFFFFFFRFK...',
+  'KFFFFRFFRFFFFK..',
+  'KFFFFFFFFFFFFK..',
+  '.KFFFFFFFFFFK...',
+  '..KFFFFFFFFK....',
+  '..KFFFF.FFFK....',
+  '..KFFFK.KFFK....',
+  '..KSSK...KSSK...',
+  '..KffK...KffK...',
+  '.KfffK...KfffK..',
+  '.KfffK...KfffK..',
+  '.KKKKK...KKKKK..',
+];
+const FIRE_WALKA = [
+  '.....KKKKK......',
+  '....KRRRRRK.....',
+  '...KRRRRRRRK....',
+  '...KSSSKSSSK....',
+  '..KSsSSKSSSK....',
+  '..KSSsSKSSSK....',
+  '..KSSSSSKSSK....',
+  '..KKSSSSSKK.....',
+  '...KSSSSSK......',
+  '..KRRFRRRRKK....',
+  '.KRRRFFRRRRRK...',
+  'KFRRFFFFRRRRK...',
+  'KFFFFFFFFFRK....',
+  '.KFFFRFFRFFK....',
+  '.KFFFFFFFFFK....',
+  '..KFFFFFFFFK....',
+  '..KFFFFFFFK.....',
+  '...KFFFKFFFK....',
+  '...KSSK.KFFK....',
+  '..KfffK.KSSK....',
+  '.Kfffk..KffK....',
+  '.Kffk...KfffK...',
+  '.KKK....KfffK...',
+  '........KKKKK...',
+];
+const FIRE_WALKB = [
+  '.....KKKKK......',
+  '....KRRRRRK.....',
+  '...KRRRRRRRK....',
+  '...KSSSKSSSK....',
+  '..KSsSSKSSSK....',
+  '..KSSsSKSSSK....',
+  '..KSSSSSKSSK....',
+  '..KKSSSSSKK.....',
+  '...KSSSSSK..S...',
+  '..KRRFRRRRKSSK..',
+  '.KRRRFFRRRRRSK..',
+  '.KRRFFFFRRRRK...',
+  '..KFFFFFFFRK....',
+  '..KFFRFFRFFK....',
+  '..KFFFFFFFFK....',
+  '..KFFFFFFFFK....',
+  '...KFFFFFFK.....',
+  '...KFFKKFFK.....',
+  '..KFFK.KFFK.....',
+  '..KSSK.KSSK.....',
+  '.KfffK.KfffK....',
+  '.Kffk...Kffk....',
+  '.KKK.....KKK....',
+  '................',
+];
+const FIRE_JUMP = [
+  '....KKKKK...S...',
+  '...KRRRRRK.SK...',
+  '..KRRRRRRRKSK...',
+  '..KSSSKSSSKSK...',
+  '.KSsSSKSSSKK....',
+  '.KSSsSKSSRRK....',
+  '.KSSSSSKRRRK....',
+  '.KKSSSSSRRK.....',
+  'KFFSSSSSRK......',
+  'KRRRFRRRRK......',
+  'KRRRFFRRRRK.....',
+  'KFRFFFFRRRK.....',
+  'KFFFFFFFFRK.....',
+  '.KFFRFFRFFK.....',
+  '.KFFFFFFFFK.....',
+  '..KFFFFFFK......',
+  '..KFFFFFFK......',
+  '.KFFFKKFFFK.....',
+  '.KSSK..KSSK.....',
+  'KfffK..KfffK....',
+  'Kffk....Kffk....',
+  'KKK......KKK....',
+  '................',
+  '................',
+];
+
+// ----------------------------------------------------------------------------
+// GOOMBA (16x16). Brown mushroom-foe with two-frame waddle + squashed frame.
+// ----------------------------------------------------------------------------
+const GOOMBA_A = [
+  '................',
+  '....KKKKKK......',
+  '..KKTTTTTTKK....',
+  '.KTTTTTTTTTTK...',
+  'KTTTTTTTTTTTTK..',
+  'KTTWWTTTTWWTK...',
+  'KTTWKWTTWKWTTK..',
+  'KTTWKWTTWKWTTK..',
+  'KTTTTTKKTTTTTK..',
+  'KtTTTTTTTTTTtK..',
+  '.KtttttttttK....',
+  '..KMMtttMMK.....',
+  '..KMMMKMMMK.....',
+  '.KKMMK.KMMKK....',
+  '.KbbK...KbbK....',
+  '.KKK.....KKK....',
+];
+const GOOMBA_B = [
+  '................',
+  '....KKKKKK......',
+  '..KKTTTTTTKK....',
+  '.KTTTTTTTTTTK...',
+  'KTTTTTTTTTTTTK..',
+  'KTTWWTTTTWWTK...',
+  'KTTWKWTTWKWTTK..',
+  'KTTWKWTTWKWTTK..',
+  'KTTTTTKKTTTTTK..',
+  'KtTTTTTTTTTTtK..',
+  '.KtttttttttK....',
+  '..KMMtttMMK.....',
+  '...KMMKMMK......',
+  '..KKMMKMMKK.....',
+  '.KbbK...KbbK....',
+  '.KKK.....KKK....',
+];
+const GOOMBA_SQUASH = [
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '....KKKKKK......',
+  '..KKTTTTTTKK....',
+  '.KTWKWTTWKWTK...',
+  'KTTWKWTTWKWTTK..',
+  'KtTTTTKKTTTTtK..',
+  '.KMMttttttMMK...',
+  'KbbKMMMMMMKbbK..',
+  'KKK........KKK..',
+];
+
+// ----------------------------------------------------------------------------
+// COIN — 4 spin frames (wide -> thin -> wide). Each 12x16, scaled to TILE.
+// ----------------------------------------------------------------------------
+const COIN0 = [
+  '....KKKKKK..',
+  '..KKYYYYYYKK',
+  '.KYYYWYYYYYK',
+  'KYYYWWyYYYYK',
+  'KYYYWyyYyYYK',
+  'KYYYWyyYyYYK',
+  'KYYYyyyYyYYK',
+  'KYYYyyyyyYYK',
+  'KYYYyyyyyYYK',
+  'KYYYyyyYyYYK',
+  'KYYYyyyYyYYK',
+  'KYYYWyyYyYYK',
+  'KYYYWWyYYYYK',
+  '.KYYYWYYYYYK',
+  '..KKYYYYYYKK',
+  '....KKKKKK..',
+];
+const COIN1 = [
+  '.....KKKK...',
+  '....KYYYYK..',
+  '...KYWyYYK..',
+  '...KYWyYYK..',
+  '...KYWyyYK..',
+  '...KYyyyYK..',
+  '...KYyyyYK..',
+  '...KYyyyYK..',
+  '...KYyyyYK..',
+  '...KYyyyYK..',
+  '...KYyyyYK..',
+  '...KYWyyYK..',
+  '...KYWyYYK..',
+  '...KYWyYYK..',
+  '....KYYYK...',
+  '.....KKKK...',
+];
+const COIN2 = [
+  '......KK....',
+  '.....KYYK...',
+  '.....KWYK...',
+  '.....KWyK...',
+  '.....KWyK...',
+  '.....KyyK...',
+  '.....KyyK...',
+  '.....KyyK...',
+  '.....KyyK...',
+  '.....KyyK...',
+  '.....KyyK...',
+  '.....KWyK...',
+  '.....KWyK...',
+  '.....KWYK...',
+  '.....KYYK...',
+  '......KK....',
+];
+const COIN3 = COIN1.map(r => r.split('').reverse().join(''));
+
+// ----------------------------------------------------------------------------
+// QUESTION / UPGRADE BLOCKS — 3 shimmer frames (glyph brightness varies).
+// Authored 16x16 so they fill a tile crisply.
+// ----------------------------------------------------------------------------
+// A beveled orange block (16x16) with a 6-row, 10-col glyph layer in the middle.
+// `glyph` rows are 10 chars; framed by 'oOO' (3) + glyph (10) + 'OO' (3) = 16.
+const QB_FRAME = (glyph, hi) => ([
+  'oooooooooooooooo',
+  'oOOOOOOOOOOOOOOo',
+  'oO'+hi+'OOOOOOOOOO'+hi+'Oo',
+  'oOO'+glyph[0]+'OOo',
+  'oOO'+glyph[1]+'OOo',
+  'oOO'+glyph[2]+'OOo',
+  'oOO'+glyph[3]+'OOo',
+  'oOO'+glyph[4]+'OOo',
+  'oOO'+glyph[5]+'OOo',
+  'oOOOOOOOOOOOOOOo',
+  'oOOO'+hi+'OOOOOO'+hi+'OOOo',
+  'oOOOOOOOOOOOOOOo',
+  'oOOOOOOOOOOOOOOo',
+  'oOOoOOOOOOOOoOOo',
+  'oOoooooooooooOOo',
+  'oooooooooooooooo',
+]);
+// Readable '?' glyph — 6 rows x 10 cols. `c` is the glyph brightness char.
+const QMARK = (c) => [
+  '..'+c+c+c+c+'....',
+  '.'+c+c+'..'+c+c+'...',
+  '.....'+c+c+'...',
+  '....'+c+c+'....',
+  '..........',
+  '....'+c+c+'....',
+];
+function buildQuestion(c, hi) { return QB_FRAME(QMARK(c), hi); }
+// Upgrade block uses a small diamond glyph — 6 rows x 10 cols.
+const UMARK = (c) => [
+  '....'+c+c+'....',
+  '...'+c+c+c+c+'...',
+  '..'+c+c+c+c+c+c+'..',
+  '...'+c+c+c+c+'...',
+  '....'+c+c+'....',
+  '..........',
+];
+function buildUpgrade(c, hi) { return QB_FRAME(UMARK(c), hi); }
+
+// ----------------------------------------------------------------------------
+// STATIC TILES (16x16) — ground, brick, used block, pipes.
+// ----------------------------------------------------------------------------
+const GROUND = [
+  'BBBBBBBBBBBBBBBB',
+  'BHHHHHHHHHHHHHHb',
+  'BBBBBBBBBBBBBBBb',
+  'BbbBbbbBbbbBbbBb',
+  'BbbBbbbBbbbBbbBb',
+  'BbBBBBBBBBBBBbBb',
+  'BbBbbbBbbbbBbbBb',
+  'BbBbbbBbbbbBbbBb',
+  'BBBBBBBBBBBBBBBb',
+  'BbbbBbbbBbbBbbBb',
+  'BbbbBbbbBbbBbbBb',
+  'BbBBBBBBBBBBBbBb',
+  'BbBbbbbBbbbBbbBb',
+  'BbBbbbbBbbbBbbBb',
+  'BbBbbbbBbbbBbbBb',
+  'BBBBBBBBBBBBBBBb',
+];
+const BRICK = [
+  'KKKKKKKKKKKKKKKK',
+  'KRRRRRRRRRRRRRrK',
+  'KRRRRRRRRRRRRRrK',
+  'KRRRRRRKRRRRRRrK',
+  'KrrrrrrKrrrrrrrK',
+  'KKKKKKKKKKKKKKKK',
+  'KRRRKRRRRRRKRRRK',
+  'KRRRKRRRRRRKRRRK',
+  'KRRRKRRRRRRKRRRK',
+  'KrrrKrrrrrrKrrrK',
+  'KKKKKKKKKKKKKKKK',
+  'KRRRRRRKRRRRRRrK',
+  'KRRRRRRKRRRRRRrK',
+  'KRRRRRRKRRRRRRrK',
+  'KrrrrrrKrrrrrrrK',
+  'KKKKKKKKKKKKKKKK',
+];
+const USED = [
+  'oooooooooooooooo',
+  'oBBBBBBBBBBBBBBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBbbbbbbbbbbbbBo',
+  'oBBBBBBBBBBBBBBo',
+  'oooooooooooooooo',
+];
+const PIPE_TOP = [
+  'KGGGGGGGGGGGGGGK',
+  'KGHHHGGGGGGGGggK',
+  'KGHHHGGGGGGGGggK',
+  'KGGGGGGGGGGGGGgK',
+  'KKKKKKKKKKKKKKKK',
+  '.KGHHGGGGGGGgK..',
+  '.KGHHGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+];
+const PIPE_BODY = [
+  '.KGHHGGGGGGGgK..',
+  '.KGHHGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+  '.KGGGGGGGGGGgK..',
+];
+
+// ----------------------------------------------------------------------------
+// PICKUPS — mushroom (16x16), flower (16x16), fireball (8x8).
+// ----------------------------------------------------------------------------
+const MUSHROOM = [
+  '....KKKKKK......',
+  '..KKRRRRRRKK....',
+  '.KRRWWRRWWRRK...',
+  'KRRWWWRRWWWRRK..',
+  'KRRWWRRRRWWRRK..',
+  'KRRRRRRRRRRRRK..',
+  'KRRRRRRRRRRRRK..',
+  '.KKKSSSSSSKKK...',
+  '..KSSSKSSSSK....',
+  '..KSSKKKSSSK....',
+  '..KSSKKKSSSK....',
+  '..KSSSSSSSSK....',
+  '..KSsSSSSsSK....',
+  '...KKSSSSKK.....',
+  '.....KKKK.......',
+  '................',
+];
+const FLOWER = [
+  '......KK........',
+  '....KKOOKK......',
+  '...KOYYYYOK.....',
+  '..KOYYWWYYOK....',
+  '..KOYWWWWYOK....',
+  '..KOYYWWYYOK....',
+  '...KOYYYYOK.....',
+  '....KKOOKK......',
+  '......CK........',
+  '.....KCK........',
+  '.....KCK........',
+  '....KCCKGK......',
+  '..GKKCCKKG......',
+  '.KGGKCCKGGK.....',
+  '..KGGKCKGGK.....',
+  '....KKCKK.......',
+];
+const FIREBALL = [
+  '.KKKK...',
+  'KOYYOK..',
+  'KYWWYOK.',
+  'KYWWYYK.',
+  'KOYWYYK.',
+  'KOYYYOK.',
+  '.KOOOK..',
+  '..KKK...',
+];
+
 export function buildSprites(scale = 1) {
   return {
-    playerSmall: grid([
-      '..RRR...','.RRRRR..','.SSKS...','SSKSSK..','SSSKKK..','.SSSS...','.RRBR...','RR.BRR..',
-    ], scale),
-    playerBig: grid([
-      '..RRR...','.RRRRR..','.SSKS...','SSKSSK..','SSSKKK..','.RRRR...','RRBRRR..','RRBBRR..',
-      '.RR.RR..','.BB.BB..',
-    ], scale),
-    goomba: grid([
-      '..BBBB..','.BBBBBB.','BBWBWBBB','BBKBKBBB','BBBBBBBB','.bb..bb.',
-    ], scale),
-    coin: grid(['.YYY.','YyYyY','YyYyY','YyYyY','.YYY.'], scale),
-    coinBlock: grid(['OOOOOO','OYYYYO','OYKKYO','OYKYYO','OYYYYO','OOOOOO'], scale),
-    upgradeBlock: grid(['OOOOOO','OCKKCO','OKCCKO','OKCCKO','OCKKCO','OOOOOO'], scale),
-    usedBlock: grid(['bbbbbb','bBBBBb','bBBBBb','bBBBBb','bBBBBb','bbbbbb'], scale),
-    brick: grid(['BBBBBB','BbBBbB','BBBBBB','bBBbBB','BBBBBB','BbBBbB'], scale),
-    ground: grid(['BBBBBB','BbbbbB','bbbbbb','bbbbbb','bbbbbb','bbbbbb'], scale),
-    pipe: grid(['GGGGGG','GggggG','GGGGGG','.GggG.','.GggG.','.GggG.'], scale),
-    pipeDeco: grid(['.GggG.','.GggG.','.GggG.','.GggG.','.GggG.','.GggG.'], scale),
-    mushroom: grid(['.RRRR.','RWRWRR','RRRRRR','.SSSS.','.SSSS.'], scale),
-    flower: grid(['.OYO.','OYOYO','.OOO.','..G..','..G..'], scale),
-    fireball: grid(['.OO.','OYYO','OYYO','.OO.'], scale),
+    // hero pose tables, keyed by power then pose
+    hero: {
+      small: { stand: grid(SMALL_STAND, scale), walkA: grid(SMALL_WALKA, scale), walkB: grid(SMALL_WALKB, scale), jump: grid(SMALL_JUMP, scale) },
+      big:   { stand: grid(BIG_STAND, scale),   walkA: grid(BIG_WALKA, scale),   walkB: grid(BIG_WALKB, scale),   jump: grid(BIG_JUMP, scale) },
+      fire:  { stand: grid(FIRE_STAND, scale),  walkA: grid(FIRE_WALKA, scale),  walkB: grid(FIRE_WALKB, scale),  jump: grid(FIRE_JUMP, scale) },
+    },
+    heroSize: {
+      small: { w: 16, h: 16 },
+      big:   { w: 16, h: 24 },
+      fire:  { w: 16, h: 24 },
+    },
+    goombaFrames: [ grid(GOOMBA_A, scale), grid(GOOMBA_B, scale) ],
+    goombaSquash: grid(GOOMBA_SQUASH, scale),
+    goombaSize: { w: 16, h: 16 },
+    coinFrames: [ grid(COIN0, scale), grid(COIN1, scale), grid(COIN2, scale), grid(COIN3, scale) ],
+    // question/upgrade shimmer frames (3 each), brightest in the middle
+    coinBlockFrames: [ grid(buildQuestion('Y','O'), scale), grid(buildQuestion('W','Y'), scale), grid(buildQuestion('Y','O'), scale) ],
+    upgradeBlockFrames: [ grid(buildUpgrade('C','c'), scale), grid(buildUpgrade('W','C'), scale), grid(buildUpgrade('C','c'), scale) ],
+    usedBlock: grid(USED, scale),
+    brick: grid(BRICK, scale),
+    ground: grid(GROUND, scale),
+    pipe: grid(PIPE_TOP, scale),
+    pipeDeco: grid(PIPE_BODY, scale),
+    mushroom: grid(MUSHROOM, scale),
+    flower: grid(FLOWER, scale),
+    fireball: grid(FIREBALL, scale),
   };
 }
-// NOTE: sprites are authored as tiny pixel grids (6–10px). The renderer draws each one
-// scaled to its destination size (tiles → 16×16, entities → their w/h), so on-screen
-// sprites align to the 16px tile grid. The flagpole is drawn procedurally (no sprite).
+
+// NOTE: hero/goomba sprites are authored at a richer internal resolution than
+// their physics hitbox; the renderer centres them horizontally and bottom-aligns
+// them so the art can look taller/detailed without changing physics. Tiles are
+// authored 16×16 and drawn at exactly TILE×TILE. All animation frame selection
+// happens in the renderer as a pure function of state + world.animClock.
