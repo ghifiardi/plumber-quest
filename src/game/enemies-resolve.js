@@ -10,7 +10,7 @@ export function resolveEnemies(w) {
     if (!overlap(p, e)) continue;
     const cameFromAbove = p.vy > 0 && (p.prevY + p.h) <= e.y + 4;
     if (cameFromAbove) { e.stomp(w); w.addScore(STOMP_SCORE); p.vy = -240; }   // consequence then event in stomp()
-    else damagePlayer(w);
+    else { damagePlayer(w); if (w.playerDied) break; }   // stop after death: no duplicate player-died this frame
   }
 }
 

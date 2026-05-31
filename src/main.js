@@ -58,11 +58,11 @@ function begin() {
   if (gs.state === STATES.title || gs.state === STATES.gameOver || gs.state === STATES.win) {
     gs.startGame();                 // full session reset (Finding #7)
     cam.bounds = gs.world.bounds;
-    audio.startMusic();
+    // music start is owned solely by afterFrame's transition handling (avoids a double startMusic)
   }
 }
 window.addEventListener('keydown', begin);
-window.addEventListener('pointerdown', () => audio.unlock());
+window.addEventListener('pointerdown', () => { audio.unlock(); begin(); });  // touch users can start too
 
 let prevState = gs.state;
 const loop = createLoop({
