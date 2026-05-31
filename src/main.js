@@ -1,2 +1,88 @@
-// Bootstrap is filled in by later tasks; placeholder keeps the module loadable.
-console.log('Plumber Quest booting…');
+import { createLoop } from './engine/loop.js';
+import { createInput } from './engine/input.js';
+import { createCamera } from './engine/camera.js';
+import { createAudio } from './engine/audio.js';
+import { createGameState, STATES } from './game/game-state.js';
+import { createWorld } from './game/world.js';
+import { parseLevel } from './levels/level-format.js';
+import { spawnGoomba } from './game/enemies.js';
+import { createRenderer } from './render/renderer.js';
+import L1 from './levels/world-1-1.js';
+import L2 from './levels/world-1-2.js';
+import L3 from './levels/world-1-3.js';
+
+const LEVELS = [L1, L2, L3];
+const canvas = document.getElementById('game');
+const renderer = createRenderer(canvas);
+const input = createInput(); input.attach(window);
+const audio = createAudio();
+
+// worldFactory receives the SAME session object game-state owns, so simulation scoring
+// (coins/score) mutates persistent state directly (spec §6; Findings #2/#5).
+function worldFactory(levelIndex, session) {
+  const lvl = parseLevel(LEVELS[levelIndex], { tile: 16 });
+  const w = createWorld(lvl, { session });
+  for (const s of lvl.entitySpawns) if (s.type === 'goomba') w.entities.push(spawnGoomba(s.x, s.y));
+  return w;
+}
+
+const gs = createGameState({ worldFactory, levelCount: LEVELS.length });
+const cam = createCamera({ viewW: canvas.width, viewH: canvas.height, bounds: { left:0, top:0, right:99999, bottom:240 } });
+
+// --- canvas scaling: integer up-scale for crisp pixels; fractional DOWN-scale only when
+//     the window is smaller than the native 256×240 so it never overflows ---
+function resize() {
+  const ratio = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
+  const scale = ratio >= 1 ? Math.floor(ratio) : ratio;
+  canvas.style.width = canvas.width * scale + 'px';
+  canvas.style.height = canvas.height * scale + 'px';
+}
+window.addEventListener('resize', resize); resize();
+
+// mute toggle works before audio init
+const muteBtn = document.getElementById('mute');
+muteBtn.addEventListener('click', () => { audio.setMuted(!audio.isMuted()); muteBtn.textContent = audio.isMuted() ? '🔇' : '🔊'; });
+
+// pause toggle (P / Escape) with music follow
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    gs.togglePause();
+    if (gs.state === STATES.paused) audio.stopMusic();
+    else if (gs.state === STATES.playing) audio.startMusic();
+  }
+});
+
+// first interaction unlocks audio + (re)starts a fresh run from title/game-over/win
+function begin() {
+  audio.unlock();
+  if (gs.state === STATES.title || gs.state === STATES.gameOver || gs.state === STATES.win) {
+    gs.startGame();                 // full session reset (Finding #7)
+    cam.bounds = gs.world.bounds;
+    audio.startMusic();
+  }
+}
+window.addEventListener('keydown', begin);
+window.addEventListener('pointerdown', () => audio.unlock());
+
+let prevState = gs.state;
+const loop = createLoop({
+  beforeFrame() { input.beginFrame(); },           // open input frame BEFORE any fixed steps
+  step() {
+    const intent = input.consumeIntent();          // edge delivered to first step this frame
+    gs.update(1/60, intent);                       // gates by state internally (paused = no-op)
+    if (gs.world) cam.bounds = gs.world.bounds;     // live bounds for camera follow
+  },                                                // jump SFX now flows via the 'jump' event
+  afterFrame() {                                   // once per frame, after ALL steps
+    if (gs.world) for (const e of gs.world.drainEvents()) audio.playEvent(e.type);
+    if (gs.state !== prevState) {
+      if ([STATES.dying, STATES.gameOver, STATES.win, STATES.title].includes(gs.state)) audio.stopMusic();
+      if (gs.state === STATES.playing && prevState !== STATES.paused) audio.startMusic();
+      prevState = gs.state;
+    }
+  },
+  render(alpha) {                                  // real interpolation alpha
+    if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session, gs.state);
+    else renderer.drawTitle();
+  },
+});
+loop.start();
