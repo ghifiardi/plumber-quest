@@ -16,6 +16,7 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
     session: session || { score: 0, coins: 0, lives: 3, levelIndex: 0 },
     timeRemaining: time, timeUp: false, fell: false, flagReached: false, playerDied: false,
     peakRise: 0,                          // jump tests: max height risen from spawn
+    animClock: 0,                         // seconds; advanced in update/updateScripted, read by renderer
     _spawnQ: [], _removeQ: [],
   };
   w.player.fireballs = 0;
@@ -37,6 +38,7 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
   w.beginDeathAnim = () => { w._anim = 'death'; w.player.vy = -300; };   // death "pop"
   w.beginClearAnim = () => { w._anim = 'clear'; };
   w.updateScripted = (dt) => {
+    w.animClock += dt;                    // keep animations alive during scripted states
     if (w._anim === 'death') {
       w.player.prevY = w.player.y;
       w.player.vy = Math.min(600, w.player.vy + 1400 * dt);
@@ -52,6 +54,7 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
   w.update = (dt, intent) => {
     // NOTE: events are NOT cleared here. They accumulate across every fixed step of a
     // rendered frame and are removed only via drainEvents() (called once per frame).
+    w.animClock += dt;                    // single animation clock (renderer reads, never writes)
 
     // snapshot prev transforms for interpolation
     w.player.prevX = w.player.x; w.player.prevY = w.player.y;
