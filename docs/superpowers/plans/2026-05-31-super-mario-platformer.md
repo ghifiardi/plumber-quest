@@ -1464,7 +1464,7 @@ export function resolveEnemies(w) {
     if (!overlap(p, e)) continue;
     const cameFromAbove = p.vy > 0 && (p.prevY + p.h) <= e.y + 4;
     if (cameFromAbove) { e.stomp(w); w.addScore(STOMP_SCORE); p.vy = -240; }   // consequence then event in stomp()
-    else damagePlayer(w);
+    else { damagePlayer(w); if (w.playerDied) break; }   // stop after death: no duplicate player-died this frame
   }
 }
 
@@ -2554,11 +2554,11 @@ function begin() {
   if (gs.state === STATES.title || gs.state === STATES.gameOver || gs.state === STATES.win) {
     gs.startGame();                 // full session reset (Finding #7)
     cam.bounds = gs.world.bounds;
-    audio.startMusic();
+    // music start is owned solely by afterFrame's transition handling (avoids a double startMusic)
   }
 }
 window.addEventListener('keydown', begin);
-window.addEventListener('pointerdown', () => audio.unlock());
+window.addEventListener('pointerdown', () => { audio.unlock(); begin(); });  // touch users can start too
 
 let prevState = gs.state;
 const loop = createLoop({
