@@ -6,6 +6,7 @@
   import { runAll } from './harness.js';
   // Import every test module so its test() calls register:
   await import('./smoke.test.js');
+  await import('./aabb.test.js');
   await runAll(document.getElementById('out'));
 </script>
 </body></html>

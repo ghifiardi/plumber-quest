@@ -253,9 +253,12 @@ test('upward box hits ceiling and reports hitFromBelow with tile coords', () => 
 });
 
 test('horizontal move into wall reports sideBlocked', () => {
-  const wall = (c, r) => c === 6;            // wall column at x=96
-  const box = { x: 80, y: 0, w: 12, h: 12, vx: 80, vy: 0 };
+  const wall = (c, r) => c === 6;            // wall column spans x=96..112
+  // vx must carry the box's right edge INTO col 6 this step without overshooting it:
+  // right edge = 80 + vx/60 + 12 must land in [96,111] -> vx in [240,1140]. Use 600.
+  const box = { x: 80, y: 0, w: 12, h: 12, vx: 600, vy: 0 };
   const facts = resolveAgainstTiles(box, wall, 16, 1/60);
+  assertEqual(box.x, 84, 'snapped against left face of the wall (96-12)');
   assertEqual(box.vx, 0);
   assert(facts.sideBlocked);
 });
