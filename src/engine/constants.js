@@ -1,0 +1,16 @@
+export const FIXED_DT = 1 / 60;
+export const TILE = 16;
+export const GRAVITY = 1400;          // px/s^2
+export const MAX_FALL = 600;          // px/s
+export const RUN_ACCEL = 1200;        // px/s^2
+export const RUN_MAX = 140;           // px/s walk
+export const RUN_MAX_FAST = 220;      // px/s with run held
+export const FRICTION = 1600;         // px/s^2
+export const JUMP_VELOCITY = -380;    // px/s initial jump
+export const JUMP_CUT = 0.45;         // multiply vy when jump released early
+export const COYOTE = 0.08;           // s
+export const JUMP_BUFFER = 0.10;      // s
+export const MAX_FIREBALLS = 2;
+export const FIREBALL_SPEED = 260;    // px/s
+export const LEVEL_TIME = 300;        // game seconds
+export const INVULN_TIME = 1.2;       // s after taking damage
