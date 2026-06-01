@@ -49,15 +49,24 @@ function worldFactory(levelIndex, session) {
 const gs = createGameState({ worldFactory, levelCount: LEVELS.length });
 const cam = createCamera({ viewW: canvas.width, viewH: canvas.height, bounds: { left:0, top:0, right:99999, bottom:240 } });
 
-// --- canvas scaling: integer up-scale for crisp pixels; fractional DOWN-scale only when
-//     the window is smaller than the native 256×240 so it never overflows ---
+// --- canvas display scaling ---
+// The canvas renders into a high-res backbuffer (set by the renderer), so we size it via
+// CSS to FILL the viewport (keeping the 256:240 aspect). On mobile this makes the game as
+// large as the screen allows instead of a tiny 1× block; the high-res backbuffer keeps it
+// crisp. On touch devices we reserve a little bottom space for the on-screen controls.
+const LOGICAL_W = 256, LOGICAL_H = 240;
+const isTouch = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches)
+  || (navigator.maxTouchPoints || 0) > 0;
 function resize() {
-  const ratio = Math.min(window.innerWidth / canvas.width, window.innerHeight / canvas.height);
-  const scale = ratio >= 1 ? Math.floor(ratio) : ratio;
-  canvas.style.width = canvas.width * scale + 'px';
-  canvas.style.height = canvas.height * scale + 'px';
+  const availW = window.innerWidth;
+  const availH = window.innerHeight * (isTouch ? 0.78 : 1);   // leave room for touch controls
+  const scale = Math.min(availW / LOGICAL_W, availH / LOGICAL_H);   // fill (fractional ok)
+  canvas.style.width = Math.round(LOGICAL_W * scale) + 'px';
+  canvas.style.height = Math.round(LOGICAL_H * scale) + 'px';
 }
-window.addEventListener('resize', resize); resize();
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
+resize();
 
 // mute toggle works before audio init
 const muteBtn = document.getElementById('mute');

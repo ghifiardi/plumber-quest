@@ -12,10 +12,17 @@ const SPRITE_FOR = {
 const OVERLAY_TEXT = { 'paused': 'PAUSED', 'level-clear': 'LEVEL CLEAR!' };
 
 export function createRenderer(canvas) {
+  // Game/render code works in a fixed LOGICAL 256x240 space, but we render into a
+  // high-resolution backbuffer (SCALE×) so scaling up to large mobile/FHD screens stays
+  // crisp. main.js sizes the canvas element (CSS) to fill the screen.
+  const W = canvas.width || 256, H = canvas.height || 240;   // logical dims
+  const SCALE = 5;                                            // backbuffer 1280x1200
+  canvas.width = W * SCALE; canvas.height = H * SCALE;
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
+  // Reset to the logical coordinate space at the start of every rendered frame.
+  const begin = () => { ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0); };
   const sprites = buildSprites(1);
-  const W = canvas.width, H = canvas.height;
   const isCoarse = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches)
     || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0);
 
@@ -132,6 +139,7 @@ export function createRenderer(canvas) {
   }
 
   function draw(world, cam, alpha, session, state) {
+    begin();
     cam.follow(interp(world.player, alpha));      // mutates cam only, never world
     const clock = world.animClock || 0;
 
@@ -186,6 +194,7 @@ export function createRenderer(canvas) {
 
   // Black "ZONE 1-x" card with hero + lives, shown before each level.
   function drawIntro(world, session) {
+    begin();
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     centerText(`ZONE 1-${session.levelIndex + 1}`, H / 2 - 24, '#fff', 12);
     const sz = sprites.heroSize.small;
@@ -196,6 +205,7 @@ export function createRenderer(canvas) {
   }
 
   function drawGameOver(session) {
+    begin();
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     centerText('GAME OVER', H/2 - 16, '#ff5a4d', 12);
     centerText('SCORE ' + String(session.score).padStart(6, '0'), H/2 + 6, '#fff', 8);
@@ -203,6 +213,7 @@ export function createRenderer(canvas) {
   }
 
   function drawWin(session) {
+    begin();
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#1f3f8a'); g.addColorStop(1, '#3a7bd5');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -215,6 +226,7 @@ export function createRenderer(canvas) {
 
   const DIFF_LABELS = ['EASY', 'NORMAL', 'HARD'];
   function drawDifficultySelect(gs) {
+    begin();
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#1f3f8a'); g.addColorStop(1, '#3a7bd5');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -227,6 +239,7 @@ export function createRenderer(canvas) {
   }
 
   function drawTitle() {
+    begin();
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#1f3f8a'); g.addColorStop(1, '#3a7bd5');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
