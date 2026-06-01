@@ -213,6 +213,19 @@ export function createRenderer(canvas) {
     if (blink()) centerText(isCoarse ? 'TAP TO PLAY AGAIN' : 'PRESS A KEY', H/2 + 38, '#fff', 8);
   }
 
+  const DIFF_LABELS = ['EASY', 'NORMAL', 'HARD'];
+  function drawDifficultySelect(gs) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#1f3f8a'); g.addColorStop(1, '#3a7bd5');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    centerText('SELECT DIFFICULTY', H/2 - 52, '#fff', 10);
+    for (let i = 0; i < DIFF_LABELS.length; i++) {
+      const sel = i === gs.selIndex;
+      centerText((sel ? '▸ ' : '  ') + DIFF_LABELS[i] + (sel ? ' ◂' : ''), H/2 - 20 + i * 18, sel ? '#ffd23f' : '#9fb0c8', 10);
+    }
+    centerText(isCoarse ? '◀ ▶ choose    A start' : '← → choose    ENTER start', H/2 + 50, '#bcd', 7);
+  }
+
   function drawTitle() {
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, '#1f3f8a'); g.addColorStop(1, '#3a7bd5');
@@ -224,5 +237,5 @@ export function createRenderer(canvas) {
     if (isCoarse) centerText('◀ ▶  move    A jump    B run/fire', H/2 + 60, '#bcd', 7);
   }
 
-  return { draw, drawTitle, drawIntro, drawGameOver, drawWin };
+  return { draw, drawTitle, drawDifficultySelect, drawIntro, drawGameOver, drawWin };
 }

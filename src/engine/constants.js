@@ -14,3 +14,14 @@ export const MAX_FIREBALLS = 2;
 export const FIREBALL_SPEED = 260;    // px/s
 export const LEVEL_TIME = 300;        // game seconds
 export const INVULN_TIME = 1.2;       // s after taking damage
+
+// Difficulty presets — affect starting lives, level time, and enemy speed.
+export const DIFFICULTIES = {
+  easy:   { label: 'EASY',   lives: 5, timeScale: 1.2, enemyScale: 0.85 },
+  normal: { label: 'NORMAL', lives: 3, timeScale: 1.0, enemyScale: 1.0 },
+  hard:   { label: 'HARD',   lives: 2, timeScale: 0.8, enemyScale: 1.3 },
+};
+export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard'];
+// Base enemy speeds (enemies.js uses these as defaults; main.js scales from them).
+export const GOOMBA_SPEED = 40;
+export const KOOPA_SPEED = 34;

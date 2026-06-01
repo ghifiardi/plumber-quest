@@ -81,6 +81,29 @@ test('player death decrements lives and reloads (via intro), or game-over', () =
   assertEqual(gs.state, STATES.gameOver);
 });
 
+test('difficulty selection sets difficulty and starting lives', () => {
+  const gs = createGameState({ worldFactory: stubWorldFactory(), levelCount: 3 });
+  gs.toDifficultySelect();
+  assertEqual(gs.state, STATES.difficultySelect);
+  gs.moveSelection(-1);                 // normal(1) -> easy(0)
+  gs.startSelected();
+  assertEqual(gs.difficulty, 'easy');
+  assertEqual(gs.session.lives, 5, 'easy starts with 5 lives');
+  assertEqual(gs.state, STATES.intro);
+});
+
+test('moveSelection wraps and only works in the select state', () => {
+  const gs = createGameState({ worldFactory: stubWorldFactory(), levelCount: 3 });
+  gs.toDifficultySelect();
+  gs.moveSelection(1);                   // normal(1) -> hard(2)
+  assertEqual(gs.selIndex, 2);
+  gs.moveSelection(1);                   // hard(2) -> wrap to easy(0)
+  assertEqual(gs.selIndex, 0);
+  gs.startSelected();                    // -> intro
+  gs.moveSelection(1);                   // no-op outside the select state
+  assert(gs.state !== STATES.difficultySelect);
+});
+
 test('flag reached -> level-clear -> next level (via intro), win after last', () => {
   const gs = createGameState({ worldFactory: stubWorldFactory(), levelCount: 2, introTime: 0 });
   gs.startGame(); toPlay(gs);
