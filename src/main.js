@@ -17,6 +17,14 @@ const renderer = createRenderer(canvas);
 const input = createInput(); input.attach(window);
 const audio = createAudio();
 
+// Haptic feedback (Android Chrome supports navigator.vibrate; iOS Safari no-ops safely).
+const haptic = (pattern) => { if (pattern && navigator.vibrate) { try { navigator.vibrate(pattern); } catch {} } };
+// Subtle buzz patterns (ms) for notable game moments. Frequent events (coins) are omitted.
+const EVENT_HAPTIC = {
+  'enemy-stomped': 18, 'brick-broken': [8, 12, 8], 'powerup-collected': [12, 24],
+  'player-hit': 30, 'player-died': [50, 30, 50], 'flag-reached': [20, 20, 40],
+};
+
 // worldFactory receives the SAME session object game-state owns, so simulation scoring
 // (coins/score) mutates persistent state directly (spec §6; Findings #2/#5).
 function worldFactory(levelIndex, session) {
@@ -69,7 +77,7 @@ const TOUCH_ACTIONS = { left: ['left'], right: ['right'], a: ['jump'], b: ['run'
 for (const btn of document.querySelectorAll('#touch-controls .tc-btn')) {
   const acts = TOUCH_ACTIONS[btn.dataset.action] || [];
   const set = (down) => acts.forEach(a => input.setAction(a, down));
-  const press = (e) => { e.preventDefault(); audio.unlock(); begin(); set(true); try { btn.setPointerCapture(e.pointerId); } catch {} };
+  const press = (e) => { e.preventDefault(); audio.unlock(); begin(); set(true); haptic(12); try { btn.setPointerCapture(e.pointerId); } catch {} };
   const release = (e) => { e.preventDefault(); set(false); };
   btn.addEventListener('pointerdown', press);
   btn.addEventListener('pointerup', release);
@@ -87,7 +95,7 @@ const loop = createLoop({
     if (gs.world) cam.bounds = gs.world.bounds;     // live bounds for camera follow
   },                                                // jump SFX now flows via the 'jump' event
   afterFrame() {                                   // once per frame, after ALL steps
-    if (gs.world) for (const e of gs.world.drainEvents()) audio.playEvent(e.type);
+    if (gs.world) for (const ev of gs.world.drainEvents()) { audio.playEvent(ev.type); haptic(EVENT_HAPTIC[ev.type]); }
     if (gs.state !== prevState) {
       if ([STATES.dying, STATES.gameOver, STATES.win, STATES.title].includes(gs.state)) audio.stopMusic();
       if (gs.state === STATES.playing && prevState !== STATES.paused) audio.startMusic();
