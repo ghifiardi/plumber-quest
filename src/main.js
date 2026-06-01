@@ -19,7 +19,7 @@ const LEVELS = [L1, L2, L3, L4, L5, L6];
 const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 const input = createInput(); input.attach(window);
-const audio = createAudio();
+const audio = createAudio({ musicUrl: 'assets/theme.mp3' });   // original Suno track; synth fallback if it fails
 
 // Haptic feedback (Android Chrome supports navigator.vibrate; iOS Safari no-ops safely).
 const haptic = (pattern) => { if (pattern && navigator.vibrate) { try { navigator.vibrate(pattern); } catch {} } };

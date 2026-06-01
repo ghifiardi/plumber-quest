@@ -28,5 +28,9 @@ Open http://localhost:8000/tests/ — runs the full suite and prints PASS/FAIL.
    `F` finish (exactly one), `-`/space empty.
 2. Import it in `src/main.js` and add to the `LEVELS` array.
 
+## Credits
+- Code & pixel art: original.
+- Background music: original track made with [Suno](https://suno.com/) (`assets/theme.mp3`). The game falls back to a synthesized melody if the track can't load.
+
 ## License
-MIT — see LICENSE.
+MIT — see LICENSE. (The bundled music track is the project owner's own creation.)

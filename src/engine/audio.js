@@ -14,8 +14,26 @@ const EVENT_SFX = {
   'player-died':'death','player-hit':'stomp','flag-reached':'flag',
 };
 
-export function createAudio({ ctxFactory = () => new (window.AudioContext||window.webkitAudioContext)() } = {}) {
+export function createAudio({
+  ctxFactory = () => new (window.AudioContext||window.webkitAudioContext)(),
+  musicUrl = null,                                   // optional looping background track (mp3)
+  musicVolume = 0.4,
+  audioFactory = (url) => new Audio(url),            // injectable for tests
+} = {}) {
   let ctx = null, muted = false, musicNodes = [], musicTimer = null;
+
+  // Optional real music track (e.g. a Suno song). Falls back to the synth melody
+  // below if no URL is given or the file fails to load.
+  let track = null, trackBroken = false;
+  if (musicUrl) {
+    try {
+      track = audioFactory(musicUrl);
+      track.loop = true;
+      track.volume = musicVolume;
+      track.preload = 'auto';
+      track.addEventListener && track.addEventListener('error', () => { trackBroken = true; });
+    } catch { track = null; }
+  }
 
   function ensure() { if (!ctx) ctx = ctxFactory(); return ctx; }
   function unlock() { const c = ensure(); if (c.state === 'suspended') c.resume(); }
@@ -34,11 +52,11 @@ export function createAudio({ ctxFactory = () => new (window.AudioContext||windo
 
   function playEvent(type) { const n = EVENT_SFX[type]; if (n) play(n); }
 
-  const MELODY = [523,659,784,659,523,587,659,494]; // simple loop
-  function startMusic() {
-    if (muted) return;
+  // --- synthesized fallback melody (used when no track / track failed) ---
+  const MELODY = [523,659,784,659,523,587,659,494];
+  function startSynth() {
     const c = ensure(); if (c.state==='suspended') c.resume();
-    stopMusic();
+    stopSynth();
     let i = 0;
     const note = () => {
       const o = c.createOscillator(), g = c.createGain();
@@ -50,10 +68,26 @@ export function createAudio({ ctxFactory = () => new (window.AudioContext||windo
     note();
     musicTimer = setInterval(note, 260);
   }
-  function stopMusic() {
+  function stopSynth() {
     if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
     for (const n of musicNodes) { try { n.stop(); } catch {} }
     musicNodes = [];
+  }
+
+  function startMusic() {
+    if (muted) return;
+    if (track && !trackBroken) {
+      // play() must be called from a user gesture; startMusic is invoked on the
+      // playing-state transition, which always follows the start/tap interaction.
+      const p = track.play();
+      if (p && p.catch) p.catch(() => { trackBroken = true; startSynth(); });
+      return;
+    }
+    startSynth();
+  }
+  function stopMusic() {
+    stopSynth();
+    if (track) { try { track.pause(); } catch {} }
   }
 
   function setMuted(v) { muted = v; if (v) stopMusic(); }

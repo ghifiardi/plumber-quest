@@ -48,3 +48,28 @@ test('mute mid-music stops it too', () => {
   a.setMuted(true);
   assert(ctx._nodes.every(n => n.stopped === true), 'muting stopped the music nodes');
 });
+
+function fakeTrack() {
+  return {
+    loop:false, volume:1, preload:'', played:0, paused:false,
+    addEventListener(){}, play(){ this.played++; this.paused=false; return Promise.resolve(); }, pause(){ this.paused=true; },
+  };
+}
+
+test('startMusic plays the provided track instead of the synth', () => {
+  const ctx = fakeCtx(); const t = fakeTrack();
+  const a = createAudio({ ctxFactory: () => ctx, musicUrl: 'x.mp3', audioFactory: () => t });
+  a.unlock(); ctx._nodes.length = 0;
+  a.startMusic();
+  assertEqual(t.played, 1, 'track was played');
+  assert(t.loop === true, 'track loops');
+  assertEqual(ctx._nodes.length, 0, 'no synth oscillators when a real track is used');
+});
+
+test('stopMusic and mute pause the track', () => {
+  const ctx = fakeCtx(); const t = fakeTrack();
+  const a = createAudio({ ctxFactory: () => ctx, musicUrl: 'x.mp3', audioFactory: () => t });
+  a.unlock(); a.startMusic();
+  a.stopMusic(); assert(t.paused, 'stopMusic paused the track');
+  t.paused = false; a.startMusic(); a.setMuted(true); assert(t.paused, 'mute paused the track');
+});
