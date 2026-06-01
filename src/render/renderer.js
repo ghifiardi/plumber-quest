@@ -96,6 +96,12 @@ export function createRenderer(canvas) {
         blit(img, Math.round(p.x + e.w/2 - sz.w/2 - cam.x), Math.round(p.y + e.h - sz.h), sz.w, sz.h, false);
         continue;
       }
+      if (e.type === 'koopa') {
+        const sz = sprites.koopaSize;
+        const img = e.mode === 'walk' ? sprites.koopaFrames[goombaFrame(clock)] : sprites.koopaShell;
+        blit(img, Math.round(p.x + e.w/2 - sz.w/2 - cam.x), Math.round(p.y + e.h - sz.h), sz.w, sz.h, e.mode === 'walk' && e.vx > 0);
+        continue;
+      }
       const key = ENT_SPRITE[e.type]; if (!key) continue;
       ctx.drawImage(sprites[key], Math.round(p.x - cam.x), Math.round(p.y), e.w, e.h);
     }

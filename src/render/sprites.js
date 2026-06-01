@@ -394,6 +394,64 @@ const GOOMBA_SQUASH = [
 ];
 
 // ----------------------------------------------------------------------------
+// KOOPA (16x16) — green shelled foe: two-frame waddle + a kickable shell.
+// ----------------------------------------------------------------------------
+const KOOPA_A = [
+  '................',
+  '.....KKKK.......',
+  '....KGGGGK......',
+  '....KGWKGK......',
+  '....KGGGGK......',
+  '...KKKGGKKK.....',
+  '..KOYYYYYYOK....',
+  '.KOYggggggYOK...',
+  '.KOYggggggYOK...',
+  '.KOYggggggYOK...',
+  '..KOYYYYYYOK....',
+  '...KGGGGGGK.....',
+  '...KGKKGKK......',
+  '..KbbK.KbbK.....',
+  '..KKK...KKK.....',
+  '................',
+];
+const KOOPA_B = [
+  '................',
+  '.....KKKK.......',
+  '....KGGGGK......',
+  '....KGWKGK......',
+  '....KGGGGK......',
+  '...KKKGGKKK.....',
+  '..KOYYYYYYOK....',
+  '.KOYggggggYOK...',
+  '.KOYggggggYOK...',
+  '.KOYggggggYOK...',
+  '..KOYYYYYYOK....',
+  '...KGGGGGGK.....',
+  '....KGGGK.......',
+  '.KbbK...KbbK....',
+  '.KKK.....KKK....',
+  '................',
+];
+const KOOPA_SHELL = [
+  '................',
+  '................',
+  '....KKKKKK......',
+  '..KKOOOOOOKK....',
+  '.KOYYYYYYYYOK...',
+  'KOYggggggggYOK..',
+  'KOYggggggggYOK..',
+  'KOYggggggggYOK..',
+  'KOYggggggggYOK..',
+  '.KOYYYYYYYYOK...',
+  '..KKOOOOOOKK....',
+  '...KKKKKKKK.....',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+
+// ----------------------------------------------------------------------------
 // COIN — 4 spin frames (wide -> thin -> wide). Each 12x16, scaled to TILE.
 // ----------------------------------------------------------------------------
 const COIN0 = [
@@ -657,6 +715,9 @@ export function buildSprites(scale = 1) {
     goombaFrames: [ grid(GOOMBA_A, scale), grid(GOOMBA_B, scale) ],
     goombaSquash: grid(GOOMBA_SQUASH, scale),
     goombaSize: { w: 16, h: 16 },
+    koopaFrames: [ grid(KOOPA_A, scale), grid(KOOPA_B, scale) ],
+    koopaShell: grid(KOOPA_SHELL, scale),
+    koopaSize: { w: 16, h: 16 },
     coinFrames: [ grid(COIN0, scale), grid(COIN1, scale), grid(COIN2, scale), grid(COIN3, scale) ],
     // question/upgrade shimmer frames (3 each), brightest in the middle
     coinBlockFrames: [ grid(buildQuestion('Y','O'), scale), grid(buildQuestion('W','Y'), scale), grid(buildQuestion('Y','O'), scale) ],

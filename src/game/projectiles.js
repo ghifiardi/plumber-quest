@@ -39,8 +39,12 @@ export function resolveProjectiles(w) {
   for (const fb of w.entities) {
     if (fb.type !== 'fireball' || !fb.alive) continue;
     for (const e of w.entities) {
-      if (e.type === 'goomba' && e.alive && overlap(fb, e)) {
-        e.stomp(w); w.addScore(STOMP_SCORE); w.popup(STOMP_SCORE, e.x, e.y); w.addShake(2); fb._expire(w);
+      if (!e.alive) continue;
+      const hittable = e.type === 'goomba' || (e.type === 'koopa' && e.mode === 'walk');
+      if (hittable && overlap(fb, e)) {
+        if (e.stomp) e.stomp(w); else { e.alive = false; w.remove(e); }
+        w.addScore(STOMP_SCORE); w.popup(STOMP_SCORE, e.x, e.y); w.addShake(2);
+        w.emit({ type: 'enemy-stomped' }); fb._expire(w);
         break;
       }
     }

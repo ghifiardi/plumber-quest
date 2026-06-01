@@ -3,7 +3,7 @@ const TILE_CHARS = {
   'o': 'coin', 'T': 'pipe', '|': 'pipe-deco',
   '-': 'empty', ' ': 'empty',
 };
-const SPAWN_CHARS = { 'G': 'goomba' };
+const SPAWN_CHARS = { 'G': 'goomba', 'K': 'koopa' };
 const SOLID = new Set(['ground', 'brick', 'coin-block', 'upgrade-block', 'pipe', 'used-block']);
 
 export function isSolidTile(kind) { return SOLID.has(kind); }

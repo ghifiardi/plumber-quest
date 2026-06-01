@@ -43,7 +43,9 @@ test('a different intent script yields a different fingerprint (not a constant)'
 
 // GOLDEN MASTER — locks the exact end-state, catching any future change to physics or
 // ordering (not just run-to-run drift). Recorded via the capture step below.
-const GOLDEN = "{\"px\":94,\"py\":-3,\"pv\":140,\"ents\":[[\"goomba\",64,2,true]]}";
+// Re-recorded after the enemy patrol fix: goombas now turn at walls (the '?' block)
+// instead of freezing against them, so the goomba travels further and ends up stomped.
+const GOLDEN = "{\"px\":94,\"py\":-13,\"pv\":140,\"ents\":[[\"goomba\",79,2,false]]}";
 
 test('determinism: fingerprint matches the recorded golden master', () => {
   const fp = play(script());
