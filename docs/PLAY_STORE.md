@@ -102,13 +102,27 @@ cd android
    start early).
 2. **Create app** → name "Plumber Quest", type *Game*, free.
 3. Work through the **Dashboard checklist**:
-   - **Store listing**: short & full description, app icon (512×512),
-     feature graphic (1024×500), and at least 2–8 phone screenshots.
+   - **Store listing**: short & full description, app icon (512×512 — use
+     [`store/play-store-icon-512.png`](../store/play-store-icon-512.png)),
+     feature graphic (1024×500 — use
+     [`store/play-feature-graphic-1024x500.png`](../store/play-feature-graphic-1024x500.png)),
+     and at least 2–8 phone screenshots (just play the game and screenshot it).
    - **Content rating** questionnaire.
    - **Target audience** & content, **Data safety** form (this app collects
      no data and uses only the INTERNET permission for Capacitor's local
      server), **Privacy policy** URL (required even for simple games).
    - **App access** (no login needed) and **Ads** (none) declarations.
+
+   **Hosting the privacy policy:** a ready-made page lives at
+   [`docs/privacy-policy.html`](privacy-policy.html). Publish it free with
+   GitHub Pages: repo **Settings → Pages → Source: Deploy from a branch →
+   Branch: `main` / folder: `/docs`**. After it deploys, your policy URL is:
+
+   ```
+   https://ghifiardi.github.io/plumber-quest/privacy-policy.html
+   ```
+
+   Paste that into the Play Console's Privacy policy field.
 4. **Release → Testing → Internal testing**: create a release, upload the
    `app-release.aab`, add yourself as a tester, and install via the opt-in
    link to verify it runs on a real device.
