@@ -94,7 +94,18 @@ function metaKey(e) {
   }
 }
 window.addEventListener('keydown', metaKey);
-window.addEventListener('pointerdown', () => audio.unlock());  // unlock audio on first touch
+
+// Whole-screen TAP advances non-gameplay states on touch (mirrors metaKey for keyboard):
+// title/game-over/win -> difficulty select; difficulty select -> start with current pick.
+// Taps on the on-screen control buttons or the mute button are handled by their own listeners.
+window.addEventListener('pointerdown', (e) => {
+  audio.unlock();
+  const t = e.target;
+  if (t && t.closest && (t.closest('#touch-controls') || t.closest('#mute'))) return;
+  const st = gs.state;
+  if (st === STATES.title || st === STATES.gameOver || st === STATES.win) gs.toDifficultySelect();
+  else if (st === STATES.difficultySelect) startRun();
+});
 
 // --- on-screen touch controls -> input actions (A = jump, B = run + fire) ---
 const TOUCH_ACTIONS = { left: ['left'], right: ['right'], a: ['jump'], b: ['run', 'fire'] };
