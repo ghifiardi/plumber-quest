@@ -1,23 +1,26 @@
 export const STATES = {
-  title: 'title', playing: 'playing', paused: 'paused',
+  title: 'title', intro: 'intro', playing: 'playing', paused: 'paused',
   dying: 'dying', levelClear: 'level-clear', win: 'win', gameOver: 'game-over',
 };
 
-export function createGameState({ worldFactory, levelCount, scriptTimes = { dying: 1.0, levelClear: 1.5 } }) {
+export function createGameState({ worldFactory, levelCount, scriptTimes = { dying: 1.0, levelClear: 1.5 }, introTime = 1.6 }) {
   const gs = {
     state: STATES.title,
     session: { score: 0, coins: 0, lives: 3, levelIndex: 0 },
     world: null,
     _scriptT: 0,
+    introT: 0, introTotal: introTime,   // exposed so the renderer can show the WORLD card
   };
 
   // worldFactory receives (levelIndex, session) so the world can mutate session counters.
   const loadLevel = () => { gs.world = worldFactory(gs.session.levelIndex, gs.session); };
   const resetSession = () => { gs.session.score = 0; gs.session.coins = 0; gs.session.lives = 3; gs.session.levelIndex = 0; };
+  // Show the "WORLD 1-x" card, then enter play. Used at start, after death, and between levels.
+  const enterIntro = () => { gs.state = STATES.intro; gs.introT = 0; };
 
   gs.toTitle = () => { resetSession(); gs.state = STATES.title; gs.world = null; };
-  // Start a brand-new run: full session reset, then load level 0. Used from title/game-over/win.
-  gs.newSession = () => { resetSession(); loadLevel(); gs.state = STATES.playing; };
+  // Start a brand-new run: full session reset, then load level 0 + intro card.
+  gs.newSession = () => { resetSession(); loadLevel(); enterIntro(); };
   gs.startGame = gs.newSession;
   gs.pause = () => { if (gs.state === STATES.playing) gs.state = STATES.paused; };
   gs.resume = () => { if (gs.state === STATES.paused) gs.state = STATES.playing; };
@@ -37,18 +40,23 @@ export function createGameState({ worldFactory, levelCount, scriptTimes = { dyin
   function _completeScripted() {
     if (gs.state === STATES.dying) {
       gs.session.lives -= 1;
-      if (gs.session.lives > 0) { loadLevel(); gs.state = STATES.playing; }
+      if (gs.session.lives > 0) { loadLevel(); enterIntro(); }
       else gs.state = STATES.gameOver;
     } else if (gs.state === STATES.levelClear) {
       gs.session.levelIndex += 1;
       if (gs.session.levelIndex >= levelCount) gs.state = STATES.win;
-      else { loadLevel(); gs.state = STATES.playing; }
+      else { loadLevel(); enterIntro(); }
     }
   }
   gs.finishScriptedForTest = _completeScripted;   // keep Task 5 tests valid
 
   gs.update = (dt, intent) => {
     switch (gs.state) {
+      case STATES.intro: {
+        gs.introT += dt;
+        if (gs.introT >= gs.introTotal) gs.state = STATES.playing;   // card shown, begin play
+        break;
+      }
       case STATES.playing: {
         gs.world.update(dt, intent);
         if (gs.world.playerDied || gs.world.fell || gs.world.timeUp) enterScripted(STATES.dying);

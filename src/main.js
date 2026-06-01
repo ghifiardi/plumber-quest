@@ -97,13 +97,18 @@ const loop = createLoop({
   afterFrame() {                                   // once per frame, after ALL steps
     if (gs.world) for (const ev of gs.world.drainEvents()) { audio.playEvent(ev.type); haptic(EVENT_HAPTIC[ev.type]); }
     if (gs.state !== prevState) {
-      if ([STATES.dying, STATES.gameOver, STATES.win, STATES.title].includes(gs.state)) audio.stopMusic();
+      if ([STATES.intro, STATES.dying, STATES.gameOver, STATES.win, STATES.title].includes(gs.state)) audio.stopMusic();
       if (gs.state === STATES.playing && prevState !== STATES.paused) audio.startMusic();
       prevState = gs.state;
     }
   },
   render(alpha) {                                  // real interpolation alpha
-    if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session, gs.state);
+    const st = gs.state;
+    if (st === STATES.title) renderer.drawTitle();
+    else if (st === STATES.intro) renderer.drawIntro(gs.world, gs.session);
+    else if (st === STATES.gameOver) renderer.drawGameOver(gs.session);
+    else if (st === STATES.win) renderer.drawWin(gs.session);
+    else if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session, st);  // playing/paused/dying/level-clear
     else renderer.drawTitle();
   },
 });

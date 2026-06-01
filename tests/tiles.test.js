@@ -10,6 +10,7 @@ function fakeWorld(rows, power) {
     addScore(n){ this.score += n; },
     spawnPickup(kind, x, y){ this.spawned.push({ kind, x, y }); },
     emit(ev){ this.events.push(ev); },
+    popup(){}, addShake(){},   // cosmetic juice hooks (no-ops in this unit test)
   };
 }
 

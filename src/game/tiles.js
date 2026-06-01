@@ -17,6 +17,7 @@ export function bumpTile(world, col, row) {
       cell.tile = 'used-block';
       world.addCoin();                                   // consequence first
       world.emit({ type: 'coin-collected', fromBlock: true });
+      world.popup('200', col * 16, row * 16 - 14);
       break;
     case 'upgrade-block': {
       cell.tile = 'used-block';
@@ -27,7 +28,7 @@ export function bumpTile(world, col, row) {
     }
     case 'brick':
       if (power === 'small') { world.emit({ type: 'block-hit' }); }      // bounce, no break
-      else { cell.tile = 'empty'; world.addScore(50); world.emit({ type: 'brick-broken' }); }
+      else { cell.tile = 'empty'; world.addScore(50); world.emit({ type: 'brick-broken' }); world.addShake(4); }
       break;
     default:
       world.emit({ type: 'block-hit' });

@@ -17,6 +17,8 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
     timeRemaining: time, timeUp: false, fell: false, flagReached: false, playerDied: false,
     peakRise: 0,                          // jump tests: max height risen from spawn
     animClock: 0,                         // seconds; advanced in update/updateScripted, read by renderer
+    popups: [],                           // floating score text {text,x,y,life} — cosmetic, sim-updated
+    shake: 0,                             // screen-shake magnitude (px), decays each step
     _spawnQ: [], _removeQ: [],
   };
   w.player.fireballs = 0;
@@ -33,12 +35,24 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
   w.emit = (ev) => { w.events.push(ev); };
   w.drainEvents = () => { const e = w.events; w.events = []; return e; };
 
+  // --- cosmetic juice (sim-owned data; renderer only reads it) ---
+  w.popup = (text, x, y) => { w.popups.push({ text: String(text), x, y, life: 0.85 }); };
+  w.addShake = (n) => { w.shake = Math.max(w.shake, n); };
+  const tickFx = (dt) => {
+    if (w.shake > 0) w.shake = Math.max(0, w.shake - 36 * dt);
+    if (w.popups.length) {
+      for (const p of w.popups) { p.y -= 26 * dt; p.life -= dt; }
+      w.popups = w.popups.filter(p => p.life > 0);
+    }
+  };
+
   // scripted (non-physics) animation driven by game-state during dying / level-clear.
   w._anim = null;
   w.beginDeathAnim = () => { w._anim = 'death'; w.player.vy = -300; };   // death "pop"
   w.beginClearAnim = () => { w._anim = 'clear'; };
   w.updateScripted = (dt) => {
     w.animClock += dt;                    // keep animations alive during scripted states
+    tickFx(dt);
     if (w._anim === 'death') {
       w.player.prevY = w.player.y;
       w.player.vy = Math.min(600, w.player.vy + 1400 * dt);
@@ -55,6 +69,7 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
     // NOTE: events are NOT cleared here. They accumulate across every fixed step of a
     // rendered frame and are removed only via drainEvents() (called once per frame).
     w.animClock += dt;                    // single animation clock (renderer reads, never writes)
+    tickFx(dt);                           // decay shake + float/expire score popups
 
     // snapshot prev transforms for interpolation
     w.player.prevX = w.player.x; w.player.prevY = w.player.y;

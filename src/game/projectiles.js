@@ -40,7 +40,7 @@ export function resolveProjectiles(w) {
     if (fb.type !== 'fireball' || !fb.alive) continue;
     for (const e of w.entities) {
       if (e.type === 'goomba' && e.alive && overlap(fb, e)) {
-        e.stomp(w); w.addScore(STOMP_SCORE); fb._expire(w);
+        e.stomp(w); w.addScore(STOMP_SCORE); w.popup(STOMP_SCORE, e.x, e.y); w.addShake(2); fb._expire(w);
         break;
       }
     }
