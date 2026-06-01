@@ -26,11 +26,23 @@ const PALETTE = {
   C:'#7fdfff', c:'#34a9d6',
   // white / black / shadow grey
   W:'#ffffff', K:'#101014', D:'#2a2a33',
-  // goomba browns
+  // legacy browns (kept for any earth-toned art)
   T:'#9c6a3c', t:'#6f4824', M:'#3a2410',
-  // fire hero (white + red)
+  // fire hero (white outfit + accents)
   F:'#ffffff', f:'#d8d8e0',
+  // --- original-character palette (hero/enemies/props are NOT third-party art) ---
+  P:'#1fa39a', p:'#147068',           // hero cap & shirt (teal)
+  V:'#ef8b2c', v:'#c46a14',           // hero overalls (orange)
+  Q:'#9a55c8', q:'#6e3a93',           // shell / power mushroom (purple)
+  I:'#3f78b0', i:'#285382', L:'#86b4e0', // steel-blue pipe (base / shade / highlight)
+  J:'#e0556a', j:'#a83248',           // blob critter (rose)
 };
+
+// Remap palette letters within a grid (used to recolor authored art at build
+// time without duplicating the ASCII grids).
+function remap(rows, map) {
+  return rows.map(r => r.split('').map(c => map[c] || c).join(''));
+}
 
 function grid(rows, scale = 1) {
   const h = rows.length, w = rows[0].length;
@@ -336,43 +348,44 @@ const FIRE_JUMP = [
 ];
 
 // ----------------------------------------------------------------------------
-// GOOMBA (16x16). Brown mushroom-foe with two-frame waddle + squashed frame.
+// BLOB critter (16x16) — original rose-coloured foe. Two-frame waddle + squash.
+// (Exported as goombaFrames/goombaSquash to keep the engine's entity names.)
 // ----------------------------------------------------------------------------
 const GOOMBA_A = [
   '................',
-  '....KKKKKK......',
-  '..KKTTTTTTKK....',
-  '.KTTTTTTTTTTK...',
-  'KTTTTTTTTTTTTK..',
-  'KTTWWTTTTWWTK...',
-  'KTTWKWTTWKWTTK..',
-  'KTTWKWTTWKWTTK..',
-  'KTTTTTKKTTTTTK..',
-  'KtTTTTTTTTTTtK..',
-  '.KtttttttttK....',
-  '..KMMtttMMK.....',
-  '..KMMMKMMMK.....',
-  '.KKMMK.KMMKK....',
-  '.KbbK...KbbK....',
-  '.KKK.....KKK....',
+  '................',
+  '.....KKKKKK.....',
+  '...KKJJJJJJKK...',
+  '..KJJJJJJJJJJK..',
+  '.KJJWWJJWWJJJJK.',
+  '.KJJWKJJWKJJJJK.',
+  'KJJJWWJJWWJJJJJK',
+  'KJJJJJJJJJJJJJJK',
+  'KJJJJJKKJJJJJJJK',
+  'KjJJJJJJJJJJJJjK',
+  '.KjjJJJJJJJJjjK.',
+  '..KKjjjjjjjjKK..',
+  '...KbbK..KbbK...',
+  '...KKK....KKK...',
+  '................',
 ];
 const GOOMBA_B = [
   '................',
-  '....KKKKKK......',
-  '..KKTTTTTTKK....',
-  '.KTTTTTTTTTTK...',
-  'KTTTTTTTTTTTTK..',
-  'KTTWWTTTTWWTK...',
-  'KTTWKWTTWKWTTK..',
-  'KTTWKWTTWKWTTK..',
-  'KTTTTTKKTTTTTK..',
-  'KtTTTTTTTTTTtK..',
-  '.KtttttttttK....',
-  '..KMMtttMMK.....',
-  '...KMMKMMK......',
-  '..KKMMKMMKK.....',
-  '.KbbK...KbbK....',
-  '.KKK.....KKK....',
+  '................',
+  '.....KKKKKK.....',
+  '...KKJJJJJJKK...',
+  '..KJJJJJJJJJJK..',
+  '.KJJWWJJWWJJJJK.',
+  '.KJJWKJJWKJJJJK.',
+  'KJJJWWJJWWJJJJJK',
+  'KJJJJJJJJJJJJJJK',
+  'KJJJJJKKJJJJJJJK',
+  'KjJJJJJJJJJJJJjK',
+  '.KjjJJJJJJJJjjK.',
+  '..KKjjjjjjjjKK..',
+  '..KbbK....KbbK..',
+  '..KKK......KKK..',
+  '................',
 ];
 const GOOMBA_SQUASH = [
   '................',
@@ -383,69 +396,70 @@ const GOOMBA_SQUASH = [
   '................',
   '................',
   '................',
-  '....KKKKKK......',
-  '..KKTTTTTTKK....',
-  '.KTWKWTTWKWTK...',
-  'KTTWKWTTWKWTTK..',
-  'KtTTTTKKTTTTtK..',
-  '.KMMttttttMMK...',
-  'KbbKMMMMMMKbbK..',
-  'KKK........KKK..',
+  '.....KKKKKK.....',
+  '...KKJJJJJJKK...',
+  '..KJWWJJWWJJJK..',
+  '.KJWKJJWKJJJJK..',
+  'KJJWWJJWWJJJJJK.',
+  'KjJJJJJJJJJJJjK.',
+  '.KjjjjjjjjjjjjK.',
+  '..KKKKKKKKKKKK..',
 ];
 
 // ----------------------------------------------------------------------------
-// KOOPA (16x16) — green shelled foe: two-frame waddle + a kickable shell.
+// SNAIL (16x16) — original purple-shelled foe: two-frame crawl + kickable shell.
+// (Exported as koopaFrames/koopaShell to keep the engine's entity names.)
 // ----------------------------------------------------------------------------
 const KOOPA_A = [
   '................',
-  '.....KKKK.......',
-  '....KGGGGK......',
-  '....KGWKGK......',
-  '....KGGGGK......',
-  '...KKKGGKKK.....',
-  '..KOYYYYYYOK....',
-  '.KOYggggggYOK...',
-  '.KOYggggggYOK...',
-  '.KOYggggggYOK...',
-  '..KOYYYYYYOK....',
-  '...KGGGGGGK.....',
-  '...KGKKGKK......',
-  '..KbbK.KbbK.....',
-  '..KKK...KKK.....',
+  '......KKKKK.....',
+  '....KKQQQQQKK...',
+  '...KQQYYYYYQQK..',
+  '..KQQYqqqqqYQK..',
+  '..KQYqqQQQqqYK..',
+  '..KQYqQQQQQqYK..',
+  '..KQYqqQQQqqYK..',
+  '.KKQQYqqqqqYQK..',
+  'KGGKQQYYYYYQQK..',
+  'KGWGKKQQQQQKK...',
+  'KGWGGGGGGK......',
+  '.KGGGGGGGGGK....',
+  '..KGGKKKKGGGK...',
+  '..KKK....KKK....',
   '................',
 ];
 const KOOPA_B = [
   '................',
-  '.....KKKK.......',
-  '....KGGGGK......',
-  '....KGWKGK......',
-  '....KGGGGK......',
-  '...KKKGGKKK.....',
-  '..KOYYYYYYOK....',
-  '.KOYggggggYOK...',
-  '.KOYggggggYOK...',
-  '.KOYggggggYOK...',
-  '..KOYYYYYYOK....',
-  '...KGGGGGGK.....',
-  '....KGGGK.......',
-  '.KbbK...KbbK....',
-  '.KKK.....KKK....',
+  '......KKKKK.....',
+  '....KKQQQQQKK...',
+  '...KQQYYYYYQQK..',
+  '..KQQYqqqqqYQK..',
+  '..KQYqqQQQqqYK..',
+  '..KQYqQQQQQqYK..',
+  '..KQYqqQQQqqYK..',
+  '.KKQQYqqqqqYQK..',
+  'KGGKQQYYYYYQQK..',
+  'KGWGKKQQQQQKK...',
+  'KGWGGGGGGGK.....',
+  '.KGGGGGGGGGK....',
+  '...KGGGKKGGK....',
+  '...KKK...KKK....',
   '................',
 ];
 const KOOPA_SHELL = [
   '................',
   '................',
-  '....KKKKKK......',
-  '..KKOOOOOOKK....',
-  '.KOYYYYYYYYOK...',
-  'KOYggggggggYOK..',
-  'KOYggggggggYOK..',
-  'KOYggggggggYOK..',
-  'KOYggggggggYOK..',
-  '.KOYYYYYYYYOK...',
-  '..KKOOOOOOKK....',
-  '...KKKKKKKK.....',
-  '................',
+  '......KKKKK.....',
+  '....KKQQQQQKK...',
+  '...KQQYYYYYQQK..',
+  '..KQYqqQQQqqYQK.',
+  '.KQYqQQQQQQQqYK.',
+  '.KQYqQQQQQQQqYK.',
+  '.KQYqqQQQQQqqYK.',
+  '..KQQYqqqqqYQK..',
+  '...KQQYYYYYQQK..',
+  '....KKQQQQQKK...',
+  '......KKKKK.....',
   '................',
   '................',
   '................',
@@ -699,13 +713,22 @@ const FIREBALL = [
   '..KKK...',
 ];
 
+// Recolour maps applied at build time so the authored grids stay readable.
+// HERO: red cap/shirt -> teal, blue overalls -> orange (an original character).
+const HERO_REMAP = { R:'P', r:'p', N:'V', n:'v' };
+// MUSHROOM power-up: red cap -> purple (not the red/white Super Mushroom).
+const MUSH_REMAP = { R:'Q', r:'q' };
+// PIPES: green warp pipe -> steel-blue plumbing pipe.
+const PIPE_REMAP = { G:'I', g:'i', H:'L' };
+
 export function buildSprites(scale = 1) {
+  const hgrid = (rows) => grid(remap(rows, HERO_REMAP), scale);
   return {
     // hero pose tables, keyed by power then pose
     hero: {
-      small: { stand: grid(SMALL_STAND, scale), walkA: grid(SMALL_WALKA, scale), walkB: grid(SMALL_WALKB, scale), jump: grid(SMALL_JUMP, scale) },
-      big:   { stand: grid(BIG_STAND, scale),   walkA: grid(BIG_WALKA, scale),   walkB: grid(BIG_WALKB, scale),   jump: grid(BIG_JUMP, scale) },
-      fire:  { stand: grid(FIRE_STAND, scale),  walkA: grid(FIRE_WALKA, scale),  walkB: grid(FIRE_WALKB, scale),  jump: grid(FIRE_JUMP, scale) },
+      small: { stand: hgrid(SMALL_STAND), walkA: hgrid(SMALL_WALKA), walkB: hgrid(SMALL_WALKB), jump: hgrid(SMALL_JUMP) },
+      big:   { stand: hgrid(BIG_STAND),   walkA: hgrid(BIG_WALKA),   walkB: hgrid(BIG_WALKB),   jump: hgrid(BIG_JUMP) },
+      fire:  { stand: hgrid(FIRE_STAND),  walkA: hgrid(FIRE_WALKA),  walkB: hgrid(FIRE_WALKB),  jump: hgrid(FIRE_JUMP) },
     },
     heroSize: {
       small: { w: 16, h: 16 },
@@ -725,9 +748,9 @@ export function buildSprites(scale = 1) {
     usedBlock: grid(USED, scale),
     brick: grid(BRICK, scale),
     ground: grid(GROUND, scale),
-    pipe: grid(PIPE_TOP, scale),
-    pipeDeco: grid(PIPE_BODY, scale),
-    mushroom: grid(MUSHROOM, scale),
+    pipe: grid(remap(PIPE_TOP, PIPE_REMAP), scale),
+    pipeDeco: grid(remap(PIPE_BODY, PIPE_REMAP), scale),
+    mushroom: grid(remap(MUSHROOM, MUSH_REMAP), scale),
     flower: grid(FLOWER, scale),
     fireball: grid(FIREBALL, scale),
   };
