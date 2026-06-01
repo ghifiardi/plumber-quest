@@ -8,6 +8,18 @@
 <div id="frame">
   <canvas id="game" width="256" height="240"></canvas>
   <button id="mute" aria-label="Toggle sound">🔊</button>
+
+  <!-- On-screen touch controls (shown only on touch / coarse-pointer devices). -->
+  <div id="touch-controls" aria-hidden="true">
+    <div class="pad">
+      <button class="tc-btn dpad" data-action="left"  aria-label="Move left">◀</button>
+      <button class="tc-btn dpad" data-action="right" aria-label="Move right">▶</button>
+    </div>
+    <div class="ab">
+      <button class="tc-btn b" data-action="b" aria-label="Run and fire">B</button>
+      <button class="tc-btn a" data-action="a" aria-label="Jump">A</button>
+    </div>
+  </div>
 </div>
 <script type="module" src="src/main.js"></script>
 </body></html>

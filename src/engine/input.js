@@ -12,14 +12,17 @@ export function createInput() {
   const pending = { jumpPressed:false, jumpReleased:false, firePressed:false };
   let frameOpen = false;
 
-  function _onKey(code, down) {
-    const action = MAP[code];
-    if (!action) return;
-    if (held[action] === down) return;        // ignore auto-repeat
+  // Core action setter — shared by keyboard and on-screen touch controls so both
+  // produce identical held flags + once-per-frame edges.
+  function setAction(action, down) {
+    if (!action || !(action in held)) return;
+    if (held[action] === down) return;        // ignore auto-repeat / re-press
     held[action] = down;
     if (action === 'jump') down ? pending.jumpPressed = true : pending.jumpReleased = true;
     if (action === 'fire' && down) pending.firePressed = true;
   }
+
+  function _onKey(code, down) { setAction(MAP[code], down); }
 
   function attach(target = window) {
     target.addEventListener('keydown', e => { if (MAP[e.code]) { e.preventDefault(); _onKey(e.code, true); } });
@@ -39,5 +42,5 @@ export function createInput() {
     return intent;
   }
 
-  return { attach, beginFrame, consumeIntent, _onKey };
+  return { attach, beginFrame, consumeIntent, setAction, _onKey };
 }

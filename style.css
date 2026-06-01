@@ -4,4 +4,33 @@ html,body{margin:0;height:100%;background:#000;display:flex;align-items:center;j
    style.width/height to an INTEGER multiple so scaling never blurs. */
 #game{image-rendering:pixelated;background:#5c94fc;display:block}
 #mute{position:absolute;top:6px;right:6px;font:16px sans-serif;background:#0008;color:#fff;
-      border:0;border-radius:6px;padding:4px 8px;cursor:pointer}
+      border:0;border-radius:6px;padding:4px 8px;cursor:pointer;z-index:3}
+
+/* ---- On-screen touch controls ---- */
+#touch-controls{display:none}            /* hidden by default (desktop) */
+
+/* Show only when the primary pointer is coarse (phones/tablets). */
+@media (pointer: coarse){
+  #touch-controls{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    position:fixed;left:0;right:0;bottom:0;
+    padding:max(14px,env(safe-area-inset-bottom)) 18px 18px;
+    box-sizing:border-box;pointer-events:none;z-index:2;
+    /* leave the canvas visible above; controls sit over the lower screen */
+  }
+  #touch-controls .pad,#touch-controls .ab{display:flex;gap:16px;pointer-events:none}
+  .tc-btn{
+    pointer-events:auto;-webkit-user-select:none;user-select:none;touch-action:none;
+    -webkit-tap-highlight-color:transparent;
+    width:64px;height:64px;border-radius:50%;border:2px solid #ffffff55;
+    background:#ffffff22;color:#fff;font:700 22px/1 system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);
+  }
+  .tc-btn:active{background:#ffffff55;transform:scale(0.94)}
+  .tc-btn.a{background:#e7402a55;border-color:#ff7a66aa}
+  .tc-btn.b{background:#f4b81e55;border-color:#ffd87aaa}
+  .tc-btn.a:active{background:#e7402aaa}
+  .tc-btn.b:active{background:#f4b81eaa}
+  .ab{align-items:center}
+  .ab .a{transform:translateY(6px)}       /* stagger A/B like a gamepad */
+}

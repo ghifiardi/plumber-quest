@@ -42,3 +42,38 @@ test('movement held flags reflect keys', () => {
   const s = input.consumeIntent();
   assert(s.right && s.run && !s.left);
 });
+
+test('setAction (touch buttons) drives the same held flags and edges as keys', () => {
+  const input = createInput();
+  input.setAction('right', true);
+  input.setAction('jump', true);            // touch A pressed
+  input.beginFrame();
+  const s = input.consumeIntent();
+  assert(s.right, 'touch right held');
+  assert(s.jumpHeld && s.jumpPressed, 'touch jump held + pressed edge');
+  input.setAction('jump', false);           // touch A released
+  input.beginFrame();
+  const s2 = input.consumeIntent();
+  assert(s2.jumpReleased && !s2.jumpHeld, 'touch jump release edge');
+});
+
+test('setAction B button = run held + fire pressed-once', () => {
+  const input = createInput();
+  input.setAction('run', true); input.setAction('fire', true);   // B pressed
+  input.beginFrame();
+  const a = input.consumeIntent();
+  assert(a.run && a.firePressed, 'run held + fire edge on press');
+  input.beginFrame();
+  const b = input.consumeIntent();
+  assert(a.run && !b.firePressed, 'fire is once-per-press; run still held');
+  input.setAction('fire', false);
+  assert(true);
+});
+
+test('setAction ignores unknown actions safely', () => {
+  const input = createInput();
+  input.setAction('nope', true);
+  input.beginFrame();
+  const s = input.consumeIntent();
+  assert(!s.left && !s.right && !s.jumpHeld, 'no effect from unknown action');
+});

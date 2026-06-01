@@ -64,6 +64,20 @@ function begin() {
 window.addEventListener('keydown', begin);
 window.addEventListener('pointerdown', () => { audio.unlock(); begin(); });  // touch users can start too
 
+// --- on-screen touch controls -> input actions (A = jump, B = run + fire) ---
+const TOUCH_ACTIONS = { left: ['left'], right: ['right'], a: ['jump'], b: ['run', 'fire'] };
+for (const btn of document.querySelectorAll('#touch-controls .tc-btn')) {
+  const acts = TOUCH_ACTIONS[btn.dataset.action] || [];
+  const set = (down) => acts.forEach(a => input.setAction(a, down));
+  const press = (e) => { e.preventDefault(); audio.unlock(); begin(); set(true); try { btn.setPointerCapture(e.pointerId); } catch {} };
+  const release = (e) => { e.preventDefault(); set(false); };
+  btn.addEventListener('pointerdown', press);
+  btn.addEventListener('pointerup', release);
+  btn.addEventListener('pointercancel', release);
+  btn.addEventListener('pointerleave', release);     // fallback when capture isn't held
+  btn.addEventListener('contextmenu', (e) => e.preventDefault());  // no long-press menu
+}
+
 let prevState = gs.state;
 const loop = createLoop({
   beforeFrame() { input.beginFrame(); },           // open input frame BEFORE any fixed steps
