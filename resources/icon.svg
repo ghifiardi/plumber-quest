@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" shape-rendering="crispEdges">
+  <!-- Sky background -->
+  <rect width="1024" height="1024" fill="#5c94fc"/>
+
+  <!-- Ground -->
+  <rect x="0" y="848" width="1024" height="176" fill="#c4633a"/>
+  <rect x="0" y="848" width="1024" height="32" fill="#e8a06a"/>
+
+  <!-- Cloud -->
+  <g fill="#ffffff">
+    <rect x="120" y="180" width="200" height="64"/>
+    <rect x="152" y="148" width="136" height="32"/>
+    <rect x="96" y="212" width="248" height="32"/>
+  </g>
+
+  <!-- Coin -->
+  <g>
+    <circle cx="760" cy="280" r="120" fill="#f8b800"/>
+    <circle cx="760" cy="280" r="120" fill="none" stroke="#b86f00" stroke-width="16"/>
+    <rect x="744" y="216" width="32" height="128" fill="#fff0a0"/>
+  </g>
+
+  <!-- Steel-blue plumbing pipe (matches the in-game pipe art) -->
+  <g>
+    <!-- pipe body -->
+    <rect x="384" y="560" width="256" height="288" fill="#3f78b0"/>
+    <rect x="384" y="560" width="64" height="288" fill="#86b4e0"/>
+    <rect x="576" y="560" width="64" height="288" fill="#285382"/>
+    <!-- pipe rim -->
+    <rect x="344" y="488" width="336" height="88" fill="#3f78b0"/>
+    <rect x="344" y="488" width="336" height="24" fill="#86b4e0"/>
+    <rect x="344" y="552" width="336" height="24" fill="#285382"/>
+    <rect x="344" y="488" width="336" height="88" fill="none" stroke="#16314a" stroke-width="12"/>
+    <rect x="384" y="576" width="256" height="272" fill="none" stroke="#16314a" stroke-width="12"/>
+  </g>
+</svg>

@@ -12,7 +12,7 @@ export function createGameState({ worldFactory, levelCount, scriptTimes = { dyin
     session: { score: 0, coins: 0, lives: 3, levelIndex: 0 },
     world: null,
     _scriptT: 0,
-    introT: 0, introTotal: introTime,   // exposed so the renderer can show the WORLD card
+    introT: 0, introTotal: introTime,   // exposed so the renderer can show the ZONE card
     difficulty: 'normal',               // 'easy' | 'normal' | 'hard'
     selIndex: DIFFICULTY_ORDER.indexOf('normal'),
   };
@@ -21,7 +21,7 @@ export function createGameState({ worldFactory, levelCount, scriptTimes = { dyin
   const loadLevel = () => { gs.world = worldFactory(gs.session.levelIndex, gs.session); };
   const startLives = () => (DIFFICULTIES[gs.difficulty] || DIFFICULTIES.normal).lives;
   const resetSession = () => { gs.session.score = 0; gs.session.coins = 0; gs.session.lives = startLives(); gs.session.levelIndex = 0; };
-  // Show the "WORLD 1-x" card, then enter play. Used at start, after death, and between levels.
+  // Show the "ZONE 1-x" card, then enter play. Used at start, after death, and between levels.
   const enterIntro = () => { gs.state = STATES.intro; gs.introT = 0; };
 
   // --- difficulty selection (driven by the menu in main.js) ---

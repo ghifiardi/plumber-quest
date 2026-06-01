@@ -167,7 +167,7 @@ export function createRenderer(canvas) {
     ctx.fillStyle = '#fff'; ctx.font = '8px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillText(`SCORE ${String(session.score).padStart(6,'0')}`, 4, 2);
     ctx.fillText(`x${session.coins}`, 96, 2);
-    ctx.fillText(`WORLD 1-${session.levelIndex+1}`, 150, 2);
+    ctx.fillText(`ZONE 1-${session.levelIndex+1}`, 150, 2);
     ctx.fillText(`TIME ${Math.ceil(world.timeRemaining)}`, 210, 2);
     ctx.fillText(`LIVES ${session.lives}`, 4, 12);
   }
@@ -184,10 +184,10 @@ export function createRenderer(canvas) {
     centerText(text, H / 2);
   }
 
-  // Classic black "WORLD 1-x" card with hero + lives, shown before each level.
+  // Black "ZONE 1-x" card with hero + lives, shown before each level.
   function drawIntro(world, session) {
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    centerText(`WORLD 1-${session.levelIndex + 1}`, H / 2 - 24, '#fff', 12);
+    centerText(`ZONE 1-${session.levelIndex + 1}`, H / 2 - 24, '#fff', 12);
     const sz = sprites.heroSize.small;
     const hx = Math.round(W/2 - sz.w - 8), hy = Math.round(H/2 + 2);
     ctx.drawImage(sprites.hero.small.stand, hx, hy, sz.w, sz.h);
