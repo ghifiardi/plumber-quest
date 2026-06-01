@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Plumber Quest</string>
+    <string name="title_activity_main">Plumber Quest</string>
+    <string name="package_name">io.github.ghifiardi.plumberquest</string>
+    <string name="custom_url_scheme">io.github.ghifiardi.plumberquest</string>
+</resources>

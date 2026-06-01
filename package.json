@@ -1,0 +1,21 @@
+{
+  "name": "plumber-quest",
+  "version": "1.0.0",
+  "description": "A small side-scrolling platformer built with vanilla HTML5 Canvas + ES modules.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/assemble-www.mjs",
+    "sync": "npm run build:web && cap sync android",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/core": "^8.3.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.3.4"
+  }
+}

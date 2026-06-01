@@ -4,3 +4,11 @@ node_modules/
 .claude/
 media/
 *.webm
+
+# Generated web bundle (assembled from the source files by scripts/assemble-www.mjs)
+www/
+
+# Android signing — NEVER commit these
+keystore.properties
+*.jks
+*.keystore

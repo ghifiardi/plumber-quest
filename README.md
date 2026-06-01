@@ -21,6 +21,11 @@ python3 -m http.server 8000
 ## Tests
 Open http://localhost:8000/tests/ — runs the full suite and prints PASS/FAIL.
 
+## Android / Google Play
+The game can be packaged as a native Android app (Capacitor) that runs fully
+offline. A GitHub Actions workflow builds a signed App Bundle (`.aab`) ready for
+the Play Store. See [docs/PLAY_STORE.md](docs/PLAY_STORE.md) for the full guide.
+
 ## Add a level
 1. Create `src/levels/world-1-N.js` exporting an array of equal-length rows.
    Chars: `X` ground, `#` brick, `?` coin block, `U` upgrade block, `o` coin,
