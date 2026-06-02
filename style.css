@@ -32,6 +32,9 @@ body.touch .tc-btn.b{background:#f4b81e70;border-color:#ffd87acc}
 body.touch .ab .a{transform:translateY(8px)}   /* stagger A/B like a gamepad */
 
 /* ---- Social (opt-in online play) controls ---- */
+/* ID rules below set display, which would override the bare [hidden] UA rule;
+   this higher-specificity rule keeps `hidden` working. */
+#social-notice[hidden],#callout-menu[hidden]{display:none}
 #social-toggle{position:absolute;top:6px;left:6px;font:8px monospace;background:#16213e;color:#7fe6c8;border:1px solid #3a4a6a;border-radius:6px;padding:4px 6px;cursor:pointer;z-index:60}
 #social-toggle.on{color:#ffd23f;border-color:#ffd23f}
 #callout-btn{position:absolute;bottom:6px;right:6px;font-size:18px;background:#16213e;border:1px solid #3a4a6a;border-radius:8px;padding:4px 8px;cursor:pointer;z-index:60}

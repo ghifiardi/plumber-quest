@@ -14,12 +14,43 @@ import L3 from './levels/world-1-3.js';
 import L4 from './levels/world-1-4.js';
 import L5 from './levels/world-1-5.js';
 import L6 from './levels/world-1-6.js';
+import { SOCIAL } from './net/config.js';
+import { createSocial } from './net/social.js';
+import { createNoopTransport } from './net/noop-transport.js';
+import { createSocialOverlay } from './ui/social-overlay.js';
+import * as handles from './net/handles.js';
+import { installationId, resetIdentity } from './net/identity.js';
+import { CALLOUTS } from './net/schema.js';
 
 const LEVELS = [L1, L2, L3, L4, L5, L6];
 const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 const input = createInput(); input.attach(window);
 const audio = createAudio({ musicUrl: 'assets/theme.mp3' });   // original Suno track; synth fallback if it fails
+
+// --- social layer (opt-in; no network until enabled) ---
+const identity = { installationId, resetIdentity };
+let social = createSocial({ config: SOCIAL, transport: createNoopTransport(), identity, handles });
+const socialOverlay = createSocialOverlay(canvas.getContext('2d'));
+const ONLINE_KEY = 'pq.online', NOTICE_KEY = 'pq.online.noticed';
+
+async function buildSupabaseSocial() {
+  const { createSupabaseTransport } = await import('./net/supabase-transport.js');  // lazy
+  return createSocial({ config: SOCIAL, transport: createSupabaseTransport(SOCIAL), identity, handles });
+}
+async function goOnline() {
+  if (!SOCIAL.enabled) return;
+  social = await buildSupabaseSocial();
+  await social.enable();
+  localStorage.setItem(ONLINE_KEY, '1');
+  refreshSocialUI(true);
+}
+async function goOffline() {
+  await social.disable();
+  social = createSocial({ config: SOCIAL, transport: createNoopTransport(), identity, handles });
+  localStorage.setItem(ONLINE_KEY, '0');
+  refreshSocialUI(false);
+}
 
 // Haptic feedback (Android Chrome supports navigator.vibrate; iOS Safari no-ops safely).
 const haptic = (pattern) => { if (pattern && navigator.vibrate) { try { navigator.vibrate(pattern); } catch {} } };
@@ -74,6 +105,50 @@ resize();
 // mute toggle works before audio init
 const muteBtn = document.getElementById('mute');
 muteBtn.addEventListener('click', () => { audio.setMuted(!audio.isMuted()); muteBtn.textContent = audio.isMuted() ? '🔇' : '🔊'; });
+
+// --- social DOM controls ---
+const $ = (id) => document.getElementById(id);
+const socialToggle = $('social-toggle'), calloutBtn = $('callout-btn'),
+  handleBox = $('social-handle'), handleName = $('handle-name'),
+  calloutMenu = $('callout-menu'), notice = $('social-notice');
+
+function refreshSocialUI(on) {
+  socialToggle.textContent = on ? 'ONLINE ◂' : 'GO ONLINE ▸';
+  socialToggle.classList.toggle('on', on);
+  calloutBtn.hidden = !on; handleBox.hidden = !on;
+  handleName.textContent = on ? handles.loadHandle() : '';
+}
+
+socialToggle.addEventListener('click', () => {
+  const on = localStorage.getItem(ONLINE_KEY) === '1';
+  if (on) { goOffline(); return; }
+  if (localStorage.getItem(NOTICE_KEY) !== '1') { notice.hidden = false; return; }  // first-run consent
+  goOnline();
+});
+$('notice-ok').addEventListener('click', () => { localStorage.setItem(NOTICE_KEY, '1'); notice.hidden = true; goOnline(); });
+$('notice-cancel').addEventListener('click', () => { notice.hidden = true; });
+$('reroll').addEventListener('click', () => { handleName.textContent = handles.rerollHandle(); });
+// "Reset online identity" (spec §8): go offline first, then drop the local
+// session/handle/iid; a fresh anon session + handle is minted on next enable.
+$('reset-id').addEventListener('click', async () => {
+  if (localStorage.getItem(ONLINE_KEY) === '1') await goOffline();
+  resetIdentity();                       // clears iid + handle
+  localStorage.removeItem('pq.supabase.auth');  // drop the persisted anon session
+  handleName.textContent = handles.loadHandle();
+});
+
+// Callout menu: one tap per preset.
+calloutMenu.innerHTML = CALLOUTS.map((c) => `<button data-c="${c}">${c}</button>`).join('');
+calloutBtn.addEventListener('click', () => { calloutMenu.hidden = !calloutMenu.hidden; });
+calloutMenu.addEventListener('click', (e) => {
+  const c = e.target.dataset.c; if (!c) return;
+  social.sendCallout(c); calloutMenu.hidden = true; haptic(12);
+});
+window.addEventListener('keydown', (e) => { if (e.code === 'KeyC' && !calloutBtn.hidden) calloutMenu.hidden = !calloutMenu.hidden; });
+
+// Restore prior preference on load (re-consent already given previously).
+if (SOCIAL.enabled && localStorage.getItem(ONLINE_KEY) === '1') goOnline();
+else refreshSocialUI(false);
 
 // Begin a run with the currently-selected difficulty (music start owned by afterFrame).
 function startRun() { gs.startSelected(); cam.bounds = gs.world.bounds; }
@@ -149,6 +224,8 @@ const loop = createLoop({
       if (ev.type === 'flag-reached') { audio.stopMusic(); audio.fanfare(); }   // duck music for the fanfare
       else audio.playEvent(ev.type);
       haptic(EVENT_HAPTIC[ev.type]);
+      if (ev.type === 'flag-reached') social.publishMilestone('level-clear', gs.session.levelIndex + 1);
+      else if (ev.type === 'one-up') social.publishMilestone('one-up');
     }
     if (gs.state !== prevState) {
       if ([STATES.title, STATES.difficultySelect, STATES.intro, STATES.dying, STATES.gameOver, STATES.win].includes(gs.state)) audio.stopMusic();
@@ -165,6 +242,7 @@ const loop = createLoop({
     else if (st === STATES.win) renderer.drawWin(gs.session);
     else if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session, st);  // playing/paused/dying/level-clear
     else renderer.drawTitle();
+    socialOverlay.draw(social.getState(), (typeof performance !== 'undefined' ? performance.now() : 0), st);
   },
 });
 loop.start();

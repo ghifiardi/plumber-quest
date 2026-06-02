@@ -16,7 +16,7 @@ export function createSocialOverlay(ctx) {
 
     // Counter: top-right on the title, tiny corner badge in-game.
     const onTitle = gameState === 'title' || gameState === 'difficultySelect';
-    text(`▸ ~${state.count} PLAYING`, onTitle ? W / 2 : W - 4, onTitle ? 70 : 22,
+    text(`▸ ~${state.count} PLAYING`, onTitle ? W / 2 : W - 4, onTitle ? 4 : 22,
       '#7fe6c8', 8, onTitle ? 'center' : 'right');
 
     // Callout bubbles: stack up the right edge, fade near end of life.
