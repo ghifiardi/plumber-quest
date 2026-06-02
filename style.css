@@ -30,3 +30,14 @@ body.touch .tc-btn:active{background:#ffffff70;transform:scale(0.93)}
 body.touch .tc-btn.a{background:#e7402a70;border-color:#ff7a66cc}
 body.touch .tc-btn.b{background:#f4b81e70;border-color:#ffd87acc}
 body.touch .ab .a{transform:translateY(8px)}   /* stagger A/B like a gamepad */
+
+/* ---- Social (opt-in online play) controls ---- */
+#social-toggle{position:absolute;top:6px;left:6px;font:8px monospace;background:#16213e;color:#7fe6c8;border:1px solid #3a4a6a;border-radius:6px;padding:4px 6px;cursor:pointer;z-index:60}
+#social-toggle.on{color:#ffd23f;border-color:#ffd23f}
+#callout-btn{position:absolute;bottom:6px;right:6px;font-size:18px;background:#16213e;border:1px solid #3a4a6a;border-radius:8px;padding:4px 8px;cursor:pointer;z-index:60}
+#social-handle{position:absolute;top:6px;left:90px;font:8px monospace;color:#bcd;z-index:60}
+#social-handle button{font:8px monospace;margin-left:4px;cursor:pointer}
+#callout-menu{position:absolute;bottom:40px;right:6px;display:flex;flex-wrap:wrap;gap:4px;max-width:160px;z-index:61}
+#callout-menu button{font:9px monospace;background:#16213e;color:#fff;border:1px solid #3a4a6a;border-radius:6px;padding:4px 6px;cursor:pointer}
+#social-notice{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;background:#000c;color:#fff;font:10px monospace;text-align:center;padding:16px;z-index:70}
+#social-notice button{font:10px monospace;padding:6px 10px;margin:0 4px;cursor:pointer}

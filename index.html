@@ -9,6 +9,16 @@
   <canvas id="game" width="256" height="240"></canvas>
   <button id="mute" aria-label="Toggle sound">🔊</button>
 
+  <!-- Social (opt-in online play). Controls are DOM, like #mute. -->
+  <button id="social-toggle" aria-label="Toggle online play">GO ONLINE ▸</button>
+  <button id="callout-btn" aria-label="Send a callout" hidden>📣</button>
+  <div id="social-handle" hidden><span id="handle-name"></span><button id="reroll" aria-label="New name">⟳</button><button id="reset-id" aria-label="Reset online identity">⌫</button></div>
+  <div id="callout-menu" hidden></div>
+  <div id="social-notice" hidden>
+    <p>Online mode shares a random player ID and handle, your online status, preset callouts, and level-clear or one-up events. No email or free-text chat. Turn it off anytime.</p>
+    <button id="notice-ok">Go online</button><button id="notice-cancel">Not now</button>
+  </div>
+
   <!-- On-screen touch controls (shown only on touch / coarse-pointer devices). -->
   <div id="touch-controls" aria-hidden="true">
     <div class="pad">
