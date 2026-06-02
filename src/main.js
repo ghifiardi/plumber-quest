@@ -145,7 +145,11 @@ const loop = createLoop({
     if (gs.world) cam.bounds = gs.world.bounds;     // live bounds for camera follow
   },                                                // jump SFX now flows via the 'jump' event
   afterFrame() {                                   // once per frame, after ALL steps
-    if (gs.world) for (const ev of gs.world.drainEvents()) { audio.playEvent(ev.type); haptic(EVENT_HAPTIC[ev.type]); }
+    if (gs.world) for (const ev of gs.world.drainEvents()) {
+      if (ev.type === 'flag-reached') { audio.stopMusic(); audio.fanfare(); }   // duck music for the fanfare
+      else audio.playEvent(ev.type);
+      haptic(EVENT_HAPTIC[ev.type]);
+    }
     if (gs.state !== prevState) {
       if ([STATES.title, STATES.difficultySelect, STATES.intro, STATES.dying, STATES.gameOver, STATES.win].includes(gs.state)) audio.stopMusic();
       if (gs.state === STATES.playing && prevState !== STATES.paused) audio.startMusic();

@@ -66,6 +66,18 @@ test('startMusic plays the provided track instead of the synth', () => {
   assertEqual(ctx._nodes.length, 0, 'no synth oscillators when a real track is used');
 });
 
+test('fanfare schedules ascending notes and respects mute', () => {
+  const ctx = fakeCtx();
+  const a = createAudio({ ctxFactory: () => ctx });
+  a.unlock(); ctx._nodes.length = 0;
+  a.fanfare();
+  assert(ctx._nodes.length >= 5, 'fanfare scheduled multiple notes');
+  const m = fakeCtx();
+  const b = createAudio({ ctxFactory: () => m });
+  b.setMuted(true); m._nodes.length = 0; b.fanfare();
+  assertEqual(m._nodes.length, 0, 'muted fanfare is silent');
+});
+
 test('stopMusic and mute pause the track', () => {
   const ctx = fakeCtx(); const t = fakeTrack();
   const a = createAudio({ ctxFactory: () => ctx, musicUrl: 'x.mp3', audioFactory: () => t });

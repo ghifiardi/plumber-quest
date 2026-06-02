@@ -52,6 +52,20 @@ export function createAudio({
 
   function playEvent(type) { const n = EVENT_SFX[type]; if (n) play(n); }
 
+  // Short ascending victory fanfare for clearing a level.
+  function fanfare() {
+    if (muted) return;
+    const c = ensure(); if (c.state === 'suspended') c.resume();
+    const notes = [392, 523, 659, 784, 1047, 784, 1047];   // G C E G C5 G C5
+    notes.forEach((f, i) => {
+      const t0 = c.currentTime + i * 0.12;
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = 'square'; o.frequency.setValueAtTime(f, t0);
+      g.gain.setValueAtTime(0.18, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+      o.connect(g); g.connect(c.destination); o.start(t0); o.stop(t0 + 0.18);
+    });
+  }
+
   // --- synthesized fallback melody (used when no track / track failed) ---
   const MELODY = [523,659,784,659,523,587,659,494];
   function startSynth() {
@@ -93,5 +107,5 @@ export function createAudio({
   function setMuted(v) { muted = v; if (v) stopMusic(); }
   function isMuted() { return muted; }
 
-  return { unlock, play, playEvent, startMusic, stopMusic, setMuted, isMuted };
+  return { unlock, play, playEvent, fanfare, startMusic, stopMusic, setMuted, isMuted };
 }

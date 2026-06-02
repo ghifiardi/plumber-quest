@@ -8,6 +8,14 @@ import { tryFire, resolveProjectiles } from './projectiles.js';
 
 const COIN_SCORE = 200;
 
+// Flagpole grab bonus: the higher up the pole you touch (frac 1 = top), the more points.
+const FLAG_TIERS = [[0.9, 5000], [0.7, 2000], [0.5, 800], [0.25, 400], [0, 100]];
+export function flagBonusForFrac(frac) {
+  const f = Math.max(0, Math.min(1, frac));
+  for (const [th, v] of FLAG_TIERS) if (f >= th) return v;
+  return 100;
+}
+
 export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
   const w = {
     level, tiles: level.tiles, bounds: level.bounds,
@@ -134,7 +142,15 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
     if (world.flagReached) return;
     const f = world.level.finish, p = world.player;
     if (p.x + p.w > f.x && p.x < f.x + 16 && p.y + p.h > f.y && p.y < world.bounds.bottom) {
-      world.flagReached = true; world.emit({ type: 'flag-reached' });
+      world.flagReached = true;
+      // bonus by how high on the pole the hero grabbed (1 = top, 0 = ground)
+      const poleTop = f.y, poleBottom = world.bounds.bottom - 32;
+      const frac = (poleBottom - p.y) / Math.max(1, poleBottom - poleTop);
+      const bonus = flagBonusForFrac(frac);
+      world.flagBonus = bonus;
+      world.addScore(bonus);
+      world.popup(bonus, f.x, p.y);                   // show the grab bonus at the pole
+      world.emit({ type: 'flag-reached', bonus });
     }
   }
 
