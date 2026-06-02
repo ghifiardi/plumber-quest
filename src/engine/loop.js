@@ -17,7 +17,10 @@ export function createLoop({ beforeFrame, step, afterFrame, render, maxSteps = 5
   function start(rafProvider = requestAnimationFrame) {
     let last = null;
     const frame = (t) => {
-      if (last != null) advance(Math.min((t - last) / 1000, 0.25));
+      // Guard the per-frame work so a single error can never permanently freeze the
+      // game: log it and keep scheduling frames (rafProvider always runs).
+      try { if (last != null) advance(Math.min((t - last) / 1000, 0.25)); }
+      catch (err) { try { console.error('[loop] frame error (continuing):', err); } catch {} }
       last = t;
       rafProvider(frame);
     };

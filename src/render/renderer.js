@@ -12,16 +12,13 @@ const SPRITE_FOR = {
 const OVERLAY_TEXT = { 'paused': 'PAUSED', 'level-clear': 'LEVEL CLEAR!' };
 
 export function createRenderer(canvas) {
-  // Game/render code works in a fixed LOGICAL 256x240 space, but we render into a
-  // high-resolution backbuffer (SCALE×) so scaling up to large mobile/FHD screens stays
-  // crisp. main.js sizes the canvas element (CSS) to fill the screen.
-  const W = canvas.width || 256, H = canvas.height || 240;   // logical dims
-  const SCALE = 5;                                            // backbuffer 1280x1200
-  canvas.width = W * SCALE; canvas.height = H * SCALE;
+  // Render at the native 256x240 backbuffer (CSS scales the element to fill the screen).
+  // A large pixelated backbuffer upscaled by CSS can stop recompositing on some mobile
+  // GPUs (appears frozen), so we keep the backbuffer native and let CSS do the scaling.
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  // Reset to the logical coordinate space at the start of every rendered frame.
-  const begin = () => { ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0); };
+  const W = canvas.width, H = canvas.height;
+  const begin = () => {};                                     // no-op (native backbuffer)
   const sprites = buildSprites(1);
   const isCoarse = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches)
     || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0);

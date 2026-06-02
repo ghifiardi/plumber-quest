@@ -56,11 +56,14 @@ const cam = createCamera({ viewW: canvas.width, viewH: canvas.height, bounds: { 
 // crisp. On touch devices we reserve a little bottom space for the on-screen controls.
 const LOGICAL_W = 256, LOGICAL_H = 240;
 const isTouch = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches)
-  || (navigator.maxTouchPoints || 0) > 0;
+  || (navigator.maxTouchPoints || 0) > 0 || ('ontouchstart' in window);
+if (isTouch) document.body.classList.add('touch');   // reveal the on-screen controls
 function resize() {
-  const availW = window.innerWidth;
-  const availH = window.innerHeight * (isTouch ? 0.78 : 1);   // leave room for touch controls
-  const scale = Math.min(availW / LOGICAL_W, availH / LOGICAL_H);   // fill (fractional ok)
+  const vw = window.innerWidth || LOGICAL_W, vh = window.innerHeight || LOGICAL_H;
+  const band = isTouch ? Math.min(170, Math.round(vh * 0.26)) : 0;   // reserve bottom band for controls
+  document.body.style.paddingBottom = band + 'px';                   // centers canvas above the band
+  const availH = Math.max(1, vh - band);
+  const scale = Math.max(0.1, Math.min(vw / LOGICAL_W, availH / LOGICAL_H));   // fill (fractional ok)
   canvas.style.width = Math.round(LOGICAL_W * scale) + 'px';
   canvas.style.height = Math.round(LOGICAL_H * scale) + 'px';
 }
