@@ -108,9 +108,15 @@ cd android
      [`store/play-feature-graphic-1024x500.png`](../store/play-feature-graphic-1024x500.png)),
      and at least 2–8 phone screenshots (just play the game and screenshot it).
    - **Content rating** questionnaire.
-   - **Target audience** & content, **Data safety** form (this app collects
-     no data and uses only the INTERNET permission for Capacitor's local
-     server), **Privacy policy** URL (required even for simple games).
+   - **Target audience** & content, **Data safety** form, **Privacy policy**
+     URL (required even for simple games). The base game collects no data. The
+     **optional, default-OFF online mode** shares, only when enabled, a
+     pseudonymous player ID + nickname, online status, preset callouts, and
+     level-clear/1-UP events via Supabase (which also processes IP/network
+     metadata) — declare these as "App activity" and "Device or other IDs",
+     shared with a third party, **not** used for tracking. The INTERNET
+     permission is used both for Capacitor's local server and for Supabase
+     Realtime when online mode is on.
    - **App access** (no login needed) and **Ads** (none) declarations.
 
    **Hosting the privacy policy:** a ready-made page lives at
