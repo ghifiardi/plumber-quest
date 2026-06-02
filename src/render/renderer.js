@@ -158,14 +158,18 @@ export function createRenderer(canvas) {
 
   function drawFlagpole(world, cam, clock) {
     const fx = Math.round(world.level.finish.x - cam.x), fy = Math.round(world.level.finish.y);
-    ctx.fillStyle = '#b9c2cc'; ctx.fillRect(fx + 7, fy, 3, world.bounds.bottom - fy);
-    ctx.fillStyle = '#e6edf3'; ctx.fillRect(fx + 7, fy, 1, world.bounds.bottom - fy);
+    const poleBottom = world.bounds.bottom;
+    ctx.fillStyle = '#b9c2cc'; ctx.fillRect(fx + 7, fy, 3, poleBottom - fy);
+    ctx.fillStyle = '#e6edf3'; ctx.fillRect(fx + 7, fy, 1, poleBottom - fy);
     ctx.fillStyle = '#cfd9e2'; ctx.beginPath(); ctx.arc(fx + 8, fy - 2, 3, 0, Math.PI * 2); ctx.fill();
+    // The flag rides DOWN the pole on level-clear (world.flagSlide: 0 top -> 1 bottom).
+    const range = Math.max(0, (poleBottom - 32) - fy - 14);
+    const flagY = fy + Math.round((world.flagSlide || 0) * range);
     const wave = Math.sin(clock * 4) * 3, tip = Math.sin(clock * 4 + 1) * 2;
     ctx.fillStyle = '#2ecc40';
-    ctx.beginPath(); ctx.moveTo(fx + 7, fy + 3); ctx.lineTo(fx - 7 + wave, fy + 7 + tip); ctx.lineTo(fx + 7, fy + 12); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(fx + 7, flagY + 3); ctx.lineTo(fx - 7 + wave, flagY + 7 + tip); ctx.lineTo(fx + 7, flagY + 12); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#27a335';
-    ctx.beginPath(); ctx.moveTo(fx + 7, fy + 8); ctx.lineTo(fx - 7 + wave, fy + 7 + tip); ctx.lineTo(fx + 7, fy + 12); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(fx + 7, flagY + 8); ctx.lineTo(fx - 7 + wave, flagY + 7 + tip); ctx.lineTo(fx + 7, flagY + 12); ctx.closePath(); ctx.fill();
   }
 
   function drawHUD(session, world) {

@@ -48,8 +48,18 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
 
   // scripted (non-physics) animation driven by game-state during dying / level-clear.
   w._anim = null;
+  w.flagSlide = 0;                        // 0 = flag at top of pole, 1 = slid to the bottom
+  w._clearT = 0;
+  const FLAG_SLIDE_TIME = 0.7;            // seconds for the flag + hero to ride down
   w.beginDeathAnim = () => { w._anim = 'death'; w.player.vy = -300; };   // death "pop"
-  w.beginClearAnim = () => { w._anim = 'clear'; };
+  w.beginClearAnim = () => {
+    w._anim = 'clear'; w._clearT = 0; w.flagSlide = 0;
+    // grab the pole at the top: snap the hero onto it, clinging (facing left)
+    w.player.x = w.level.finish.x; w.player.y = w.level.finish.y;
+    w.player.vx = 0; w.player.vy = 0; w.player.facing = -1; w.player.onGround = false;
+  };
+  // hero rests on top of the 2-row ground at the base of the pole
+  const clearGroundY = () => w.bounds.bottom - 32 - w.player.h;
   w.updateScripted = (dt) => {
     w.animClock += dt;                    // keep animations alive during scripted states
     tickFx(dt);
@@ -58,8 +68,19 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
       w.player.vy = Math.min(600, w.player.vy + 1400 * dt);
       w.player.y += w.player.vy * dt;                 // hop then fall
     } else if (w._anim === 'clear') {
-      w.player.prevX = w.player.x;
-      w.player.x += 40 * dt;                          // stroll past the flag
+      w._clearT += dt;
+      const groundY = clearGroundY();
+      if (w._clearT < FLAG_SLIDE_TIME) {
+        const t = w._clearT / FLAG_SLIDE_TIME;        // 0..1: flag + hero ride down together
+        w.flagSlide = t;
+        w.player.prevY = w.player.y;
+        w.player.y = w.level.finish.y + t * (groundY - w.level.finish.y);
+      } else {                                        // landed: hop off and stroll right
+        w.flagSlide = 1;
+        w.player.prevX = w.player.x; w.player.prevY = w.player.y;
+        w.player.y = groundY; w.player.facing = 1;
+        w.player.x += 40 * dt;
+      }
     }
   };
 
