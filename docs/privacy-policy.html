@@ -26,16 +26,30 @@
   <p>
     This Privacy Policy explains how the mobile application <strong>Plumber
     Quest</strong> ("the app", "we", "us") handles information. Plumber Quest is a
-    single-player offline arcade platformer. We have tried to keep this simple
-    because the app is simple: <strong>it does not collect, store, or share any
-    personal information.</strong>
+    single-player offline arcade platformer. The base game works fully offline
+    and has an <strong>optional online mode that is OFF by default</strong>;
+    while online mode is off, the app does not collect, store, or share any
+    personal information.
   </p>
 
-  <h2>Information we collect</h2>
+  <h2>Information we collect (offline — the default)</h2>
   <p>
-    <strong>None.</strong> The app does not collect any personal or sensitive
-    user data. It does not ask you to create an account, sign in, or provide any
-    information. We do not have servers that receive data from the app.
+    <strong>None.</strong> With online mode off, the app does not collect any
+    personal or sensitive user data, does not ask you to create an account or
+    sign in, and does not transmit anything.
+  </p>
+
+  <h2>Information shared in optional online mode</h2>
+  <p>
+    If you turn on online mode, the app shares a <strong>random pseudonymous
+    player ID and nickname</strong>, your <strong>online status</strong>, the
+    <strong>preset callouts</strong> you send, and <strong>level-clear / 1-UP
+    events</strong> with other players, via <strong>Supabase</strong> (our
+    realtime provider). Supabase processes this plus standard network metadata
+    such as your IP address. We do not collect your email, and there is no
+    free-text chat. You can turn online mode off at any time from the title
+    screen; doing so stops all sharing. Anonymous identifiers are deleted after
+    about 30 days of inactivity.
   </p>
 
   <h2>Data stored on your device</h2>
@@ -49,15 +63,18 @@
   <h2>Third-party services</h2>
   <p>
     The app contains <strong>no advertising, no analytics, and no third-party
-    tracking SDKs</strong>. We do not share any information with third parties,
-    because we do not collect any.
+    tracking SDKs</strong>. The only third-party service is <strong>Supabase</strong>,
+    used solely as the realtime backend for the optional online mode; it
+    receives data only while online mode is enabled (see above). With online
+    mode off, we do not share any information with third parties.
   </p>
 
   <h2>Permissions</h2>
   <ul>
     <li><strong>Internet</strong> — required by the app's runtime
-    (Capacitor) to load the bundled game content from a local in-app server.
-    It is not used to send your data anywhere; the game is fully playable
+    (Capacitor) to load the bundled game content from a local in-app server,
+    and, only when you enable the optional online mode, to connect to Supabase
+    Realtime. With online mode off it sends nothing; the game is fully playable
     offline.</li>
     <li><strong>Vibration</strong> — used only to provide on-device haptic
     feedback during gameplay, if supported by your device.</li>
