@@ -709,7 +709,7 @@ export function createSocial({ config, transport, identity, handles, now = () =>
     const t = now();
     if (t - windowStart >= 1000) { windowStart = t; windowCount = 0; }   // 1s window
     if (windowCount >= config.globalMaxPerSec) { diag.dropped++; return false; }   // global cap
-    const last = lastBySender.get(iid) || -Infinity;
+    const last = lastBySender.get(iid) ?? -Infinity;   // ?? not || (a stored ts of 0 is valid)
     if (t - last < config.perSenderMinGapMs) { diag.dropped++; return false; }     // per-sender gap
     lastBySender.set(iid, t); windowCount++;
     return true;
@@ -934,7 +934,11 @@ import { createSocialOverlay } from '../src/ui/social-overlay.js';
 function stubCtx() {
   const noop = () => {};
   return new Proxy({ canvas: { width: 256, height: 240 } }, {
-    get: (t, k) => (k in t ? t[k] : (typeof k === 'string' ? noop : undefined)),
+    get: (t, k) => {
+      if (k === 'canvas') return t.canvas;
+      if (k === 'measureText') return () => ({ width: 10 });   // canvas API returns a TextMetrics
+      return noop;                                             // any drawing call / property
+    },
     set: () => true,
   });
 }
@@ -983,7 +987,7 @@ export function createSocialOverlay(ctx) {
 
     // Counter: top-right on the title, tiny corner badge in-game.
     const onTitle = gameState === 'title' || gameState === 'difficultySelect';
-    text(`▸ ~${state.count} PLAYING`, onTitle ? W / 2 : W - 4, onTitle ? 70 : 22,
+    text(`▸ ~${state.count} PLAYING`, onTitle ? W / 2 : W - 4, onTitle ? 4 : 22,
       '#7fe6c8', 8, onTitle ? 'center' : 'right');
 
     // Callout bubbles: stack up the right edge, fade near end of life.
@@ -1078,9 +1082,11 @@ In `index.html`, immediately after the `<button id="mute" …>` line, add:
 
 - [ ] **Step 2: Add styles**
 
-In the `<style>` block of `index.html` (same place `#mute` is styled), add:
+Styles live in `style.css` (linked from `index.html`), not an inline block. Append to `style.css` (same place `#mute` is styled, `z-index:60` to sit above the canvas):
 
 ```css
+/* ID rules set display, which overrides the bare [hidden] UA rule; this keeps `hidden` working. */
+#social-notice[hidden],#callout-menu[hidden]{display:none}
 #social-toggle{position:absolute;top:6px;left:6px;font:8px monospace;background:#16213e;color:#7fe6c8;border:1px solid #3a4a6a;border-radius:6px;padding:4px 6px;z-index:5}
 #social-toggle.on{color:#ffd23f;border-color:#ffd23f}
 #callout-btn{position:absolute;bottom:6px;right:6px;font-size:18px;background:#16213e;border:1px solid #3a4a6a;border-radius:8px;padding:4px 8px;z-index:5}
