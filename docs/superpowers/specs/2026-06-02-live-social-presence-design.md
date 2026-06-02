@@ -1,16 +1,20 @@
 # Live Social Presence — Design Spec
 
 - **Date:** 2026-06-02
-- **Status:** Approved in shape; Phase 1 approved pending the security/cost tightenings captured here.
+- **Status:** Rev 2 — security/cost review findings incorporated (auth-vs-abuse boundary clarified, `iid` in payloads + global rate cap, session-preserving kill switch, `f·N²` ghost cost, age-based cleanup, accurate privacy copy, diagnostics-not-telemetry). Awaiting final spec sign-off before writing-plans.
 - **Author:** Ghifi + Claude (brainstorming session)
 - **Feature branch:** `feat/live-social-presence`
 
 ## 1. Summary
 
-Add lightweight, *moderation-free* social presence to Plumber Quest so the
+Add lightweight, *moderation-minimized* social presence to Plumber Quest so the
 world feels inhabited and players can react to each other — while preserving
 the game's defining properties: a deterministic, fully offline-capable,
 client-only static site (also shipped as an offline Android app).
+
+(*Moderation-minimized*, not moderation-free: presets remove the **text**
+moderation surface, but abuse handling — quota/availability, spoofing,
+sign-up abuse — still exists and is addressed in §7.)
 
 We add **presence + preset callouts**, never free-text chat. Identity is an
 auto-generated retro handle. The realtime backend is **Supabase Realtime**,
@@ -19,7 +23,8 @@ adapter so the game stays provider-agnostic.
 
 ### Goals
 - Make the game feel alive (others are here now) and reactive (tap to cheer).
-- Zero moderation surface: no arbitrary user text on the wire or on screen.
+- No free-text moderation surface: no arbitrary user text on the wire or on
+  screen (abuse handling still exists — see §7).
 - Strictly additive: with social off or offline, the game is byte-for-byte the
   experience it is today. Determinism and the existing 94-test suite are
   untouched.
@@ -48,7 +53,7 @@ adapter so the game stays provider-agnostic.
   private channel (`lobby`).
 - **Phase 2 (separate spec/plan):** ghost runners on per-level sharded
   channels. Data model is designed now so nothing blocks it; build only after
-  Phase 1 telemetry confirms headroom.
+  Phase 1 Supabase-dashboard usage confirms headroom.
 
 ## 4. Architecture
 
@@ -89,7 +94,7 @@ const RealtimeTransport = {
   subscribe(topic, handler): () => void,   // handler(payload); returns unsubscribe
   presence(handler): () => void,           // handler(members[]) snapshot on change; returns unsubscribe
   publish(topic, payload): Promise<void>,  // broadcast on the joined private channel
-  disconnect(): Promise<void>,             // untrack presence, leave channel, sign out/teardown
+  disconnect(): Promise<void>,             // untrack presence, unsubscribe, remove channel, drop channel auth — KEEP the anon session (§8)
 };
 ```
 
@@ -100,8 +105,13 @@ only.
 ## 5. Data model & channels
 
 ### 5.1 Channel
-- **Phase 1:** one **private** channel `lobby`
-  (`supabase.channel('lobby', { config: { private: true } })`).
+- **Phase 1:** one **private** channel `lobby`, with presence keyed by the
+  installation ID so multi-tab/reconnect overlap collapses to one member:
+  ```js
+  supabase.channel('lobby', { config: { private: true, presence: { key: installationId } } })
+  ```
+  "Playing now" = `Object.keys(channel.presenceState()).length` (distinct
+  presence **keys**, not metadata rows).
 - **Phase 2:** per-level sharded private channels `ghosts:<level>:<shard>`.
 
 ### 5.2 Payload schemas (versioned)
@@ -111,19 +121,19 @@ are dropped on receive.
 ```js
 const SCHEMA_VERSION = 1;
 
-// callout (broadcast)
-{ v: 1, t: 'callout', h: <handle>, c: <CalloutCode> }
+// callout (broadcast) — iid included for per-sender UI throttling (§7.2)
+{ v: 1, t: 'callout', iid: <installationId>, h: <handle>, c: <CalloutCode> }
 // milestone (broadcast) — cosmetic only, untrusted
-{ v: 1, t: 'milestone', h: <handle>, k: <MilestoneKind>, lvl?: 1..6 }
+{ v: 1, t: 'milestone', iid: <installationId>, h: <handle>, k: <MilestoneKind>, lvl?: 1..6 }
 // presence (tracked state, NOT a broadcast)
 { iid: <installationId>, h: <handle> }
 // ghost (Phase 2, broadcast) — designed now, not built
-{ v: 1, t: 'ghost', h: <handle>, x: int, y: int, p: <pose>, f: -1|1 }
+{ v: 1, t: 'ghost', iid: <installationId>, h: <handle>, x: int, y: int, p: <pose>, f: -1|1 }
 ```
 
 ### 5.3 Enums
 ```js
-CALLOUTS      = ['GG', 'NICE', 'LETSGO', 'ONMYWAY', 'COOL', 'COIN', 'OOPS', 'WAVE'];
+CALLOUTS      = ['GG', 'NICE', 'LETSGO', 'OOPS', 'WAVE', 'COIN'];
 MILESTONES    = ['level-clear', 'one-up'];   // score & high-score intentionally excluded — see §6
 ```
 
@@ -146,38 +156,58 @@ therefore treat milestones as pure social flavor:
 
 ## 7. Security & abuse model
 
-**The abuse boundary is server-enforced, not client-enforced.** Client
-validation is defense-in-depth for the *UI*, explicitly *not* the quota/abuse
-boundary.
+**What Phase 1 provides:** server-enforced **authentication** and **topic
+access control**, plus client-side UI defenses. **What it does NOT provide:** a
+server-side payload-validation or per-user rate-limit boundary. RLS on Realtime
+authorizes *channel capabilities at join time* (can this session read/write
+broadcast/presence on this topic); it does **not** inspect each broadcast
+payload or rate-limit each sender. So an authenticated, modified client can
+still send schema-valid spoofed payloads and can still pressure quota/
+availability. **Phase 1 accepts that residual quota/availability-abuse risk.**
 
-### 7.1 Server-side boundary (the real one)
+A hardened version (post-Phase-1, if abuse appears) routes broadcasts through a
+**Supabase Edge Function** that validates payloads and enforces **per-user rate
+limits**, rather than letting clients broadcast directly.
+
+### 7.1 Server-side authentication & access control (not a payload/rate boundary)
 - **Anonymous auth:** `supabase.auth.signInAnonymously()` issues a JWT with no
   PII. The client calls `supabase.realtime.setAuth(token)` before joining.
 - **Private channels:** `{ config: { private: true } }` — only authenticated
-  sessions may join.
-- **RLS on `realtime.messages`:** policies restrict read/write of broadcast +
-  presence to the `authenticated` role and to the allowed topics
-  (`lobby`, later `ghosts:*`). This stops anonymous-of-the-internet writes and
-  forces every publisher through an auth'd session.
+  sessions may join; gates out anonymous-of-the-internet access.
+- **RLS on `realtime.messages`:** policies authorize the `authenticated` role to
+  read/write broadcast + presence on the allowed topics (`lobby`, later
+  `ghosts:*`). This is **join-time capability control**, not per-message
+  validation or rate-limiting.
 - **Persisted anonymous session + installation ID:** the supabase-js session is
-  persisted in `localStorage` and reused across visits so we do **not** mint a
-  fresh anonymous user every load (see §12 cleanup). A separate persisted
-  `installationId` (UUID) is the presence key and the per-sender throttle key.
+  persisted in `localStorage` and reused across visits so we mint at most one
+  anon user per device (see §12). A separate persisted `installationId` (UUID)
+  is the presence key and the per-sender throttle key.
 
-### 7.2 Client-side defense-in-depth (UI safety)
+### 7.2 Client-side defense-in-depth (UI safety only)
 - Inbound validation: drop payloads whose `v` ≠ supported, whose `t`/enum is
-  unknown, whose fields fail type/range checks, or whose handle fails the
-  `^[A-Za-z0-9 _-]{1,16}$` shape.
+  unknown, whose `iid` is not a valid UUID, whose fields fail type/range checks,
+  or whose handle fails the `^[A-Za-z0-9 _-]{1,16}$` shape.
 - Escape all displayed strings; hard length caps on everything rendered.
-- Per-sender (by `iid`) UI rate-limiting + bounded queues (§9) so a misbehaving
-  peer cannot flood the overlay.
+- **Per-sender (by `iid`) UI throttle AND a global inbound rate cap.** Because a
+  malicious client can rotate spoofed `iid`s, per-sender throttling alone is
+  insufficient — the global cap (drop/coalesce inbound beyond N events/sec
+  across all senders) bounds overlay load regardless of ID rotation.
+- Bounded queues (§9) so no peer can grow memory or flood the overlay.
+
+These protect the **UI**; they are not the abuse boundary (see the §7 preamble).
 
 ### 7.3 Residual risk (accepted, documented)
-A determined attacker holding a valid anonymous session can still publish
-schema-valid spoofed callouts/milestones within RLS limits. For a hobby game
-this is acceptable. Mitigations if abuse appears: tighten RLS/rate context, add
-**Cloudflare Turnstile to anonymous sign-in** (Supabase-supported), and lean on
-telemetry (§10) to detect it.
+A determined attacker with a valid anonymous session can publish schema-valid
+spoofed callouts/milestones and can pressure Realtime quota; RLS does not stop
+this. For a hobby game this is acceptable for Phase 1. Mitigations, in order of
+escalation if abuse appears:
+1. **Enable invisible Cloudflare Turnstile on anonymous sign-in before public
+   launch** — Supabase strongly recommends CAPTCHA for anonymous sign-ins; this
+   raises the cost of mass session minting.
+2. Move broadcasts behind an **Edge Function** with payload validation +
+   per-user rate limits (the real server-side boundary).
+3. Tighten/segment channels and lean on Supabase dashboard usage + logs (§10) to
+   detect and respond.
 
 ## 8. Privacy & consent
 
@@ -185,14 +215,22 @@ telemetry (§10) to detect it.
   the player opts in.
 - The title screen shows a `GO ONLINE ▸` toggle (next to mute). The **first**
   time it is enabled, a one-time notice appears:
-  > "Online play shares a random nickname and level milestones with other
-  > players. No account, no personal data. You can turn this off anytime."
+  > "Online mode shares a random player ID and handle, your online status,
+  > preset callouts, and level-clear or one-up events. No email or free-text
+  > chat. Turn it off anytime."
 - Preference persisted in `localStorage`.
-- **Disable = full kill switch:** `disconnect()` (untrack presence, leave
-  channel, sign out / drop session auth), clear all social UI state (counter,
-  bubbles, ticker), and stop all publishing and receiving. Re-enabling
-  reconnects cleanly.
-- No PII anywhere: handle is random, IDs are random UUIDs, all local.
+- **Disable = kill switch (session preserved):** untrack presence, unsubscribe,
+  remove the channel + its auth, and clear all social UI state (counter,
+  bubbles, ticker); stop all publishing and receiving. **Keep the persisted
+  anonymous session** — signing out here would mint a new anonymous user on
+  every re-enable (§12). Re-enabling reconnects cleanly with the same identity.
+- A separate **"Reset online identity"** action exists for users who want a
+  fresh identity: it deletes the local session + handle + installation ID (a new
+  anon user is created on the next enable).
+- **Identifiers are pseudonymous, not absent.** The handle, player ID, and
+  installation ID are random (no email, no free text), but Supabase processes
+  these plus network metadata (e.g. IP). The Play Store data-safety disclosure
+  must reflect this (see §16).
 
 ## 9. UX & retro styling
 
@@ -211,16 +249,18 @@ the game's existing pixel/monospace aesthetic.
   bubbles = max **5** concurrent (drop oldest). Prevents unbounded growth and
   flooding.
 
-## 10. Telemetry (privacy-safe, client-side)
+## 10. Local diagnostics (not collected telemetry)
 
-Lightweight counters surfaced to console and an optional debug overlay (no
-PII, no network beacon in Phase 1):
+Lightweight counters surfaced **only** to the console and an optional on-screen
+debug overlay — they are **not** collected or sent anywhere in Phase 1, so they
+cannot themselves verify behavior "in the wild":
 - connection count / current `ConnStatus`, reconnect attempts;
-- inbound dropped-by-validator, inbound rate-limited;
+- inbound dropped-by-validator, inbound rate-limited (per-sender + global);
 - outbound published; current presence size.
 
-These verify the cost model in the wild and are the trigger data for enabling
-Phase 2.
+**Phase-2 gating uses the Supabase dashboard** (Realtime usage graphs + logs),
+not these local counters. Free-tier ceilings to stay under: **100 messages/sec**
+and **200 concurrent connections**.
 
 ## 11. Phase 2 — Ghost runners (designed, NOT in Phase 1 build)
 
@@ -228,24 +268,27 @@ Kept separate because the cost is quadratic, not linear.
 
 ### 11.1 Cost model
 Supabase counts one message per **sent** broadcast **plus one per delivery**.
-In a room of `N` players each sampling at `f` Hz, throughput ≈ `f · N · (N−1)`
-messages/sec. The current free-tier ceiling is **100 messages/sec**.
+So each sender at `f` Hz in a room of `N` costs `f · (1 + (N−1)) = f · N`
+messages/sec (its own send + delivery to `N−1` peers); across all `N` senders
+that is **≈ `f · N²` messages/sec** for the room. The current free-tier ceiling
+is **100 messages/sec**.
 
-| f (Hz) | N | msgs/sec ≈ |
+| f (Hz) | Players (N) | msgs/sec ≈ |
 |---|---|---|
-| 10 | 10 | 900 ❌ |
-| 3 | 8 | 168 ❌ |
-| 3 | 5 | 60 ✅ |
-| 2 | 6 | 60 ✅ |
+| 10 | 10 | 1000 ❌ |
+| 3 | 8 | 192 ❌ |
+| 3 | 5 | 75 ✅ |
+| 2 | 6 | 72 ✅ |
 
 ### 11.2 Required constraints before building ghosts
-- **Sampling 2–4 Hz** (not 10), with **client interpolation** to smooth motion.
-- **Room cap** (~5–6 per shard) and **sharding**: join the least-full shard of
-  `ghosts:<level>:<shard>` up to the cap.
+- **Sampling 2–3 Hz** (not 10), with **client interpolation** to smooth motion.
+- **Room cap ≤ 5–6 per shard** and **sharding**: join the least-full shard of
+  `ghosts:<level>:<shard>` up to the cap. Per the `f·N²` model, 3 Hz × 5 = 75/s
+  and 2 Hz × 6 = 72/s both stay under the 100 msgs/sec ceiling.
 - **Explicit per-room message budget** kept under the tier ceiling, with
   client-side backpressure (drop frames before exceeding budget).
 - Ghosts ride a **separate channel** from the Phase-1 `lobby` channel.
-- Gate the build on Phase-1 telemetry showing headroom.
+- Gate the build on Phase-1 Supabase **dashboard usage** showing headroom.
 
 ## 12. Anonymous-user cleanup
 
@@ -253,9 +296,14 @@ Supabase creates a user row per `signInAnonymously()` and does **not** delete
 them automatically. Mitigations:
 - **Reuse** the persisted anon session across visits (don't sign in again if a
   valid session exists) so we mint at most one anon user per device.
-- Provide a **scheduled cleanup** (SQL cron / Edge Function) deleting anonymous
-  users with no recent activity older than ~30 days (configurable). Documented
-  as an operational task, included in the implementation plan.
+- **Age-based cleanup, not activity-based.** Phase 1 keeps no `last_seen`
+  column, so the scheduled cleanup (SQL cron / Edge Function) deletes anonymous
+  users by creation age — `created_at < now() - interval '30 days'` (the
+  Supabase-documented approach) — not by "recent activity."
+- **Transparent recovery:** if a client's persisted session belongs to a
+  since-deleted user, sign-in fails gracefully and the client creates a **fresh
+  anonymous session** on the next enable (a new handle/ID may result). No error
+  surfaces to the player.
 
 ## 13. Offline-first / graceful degradation
 
@@ -276,26 +324,41 @@ them automatically. Mitigations:
 ## 15. Testing
 
 Via `fake-transport.js` (no real network in tests):
-- validator: wrong `v` dropped; unknown callout/milestone enum dropped;
-  bad handle shape dropped; oversized fields dropped; per-`iid` rate-limit trips.
-- handle gen/persist + reroll; installation ID persistence.
+- validator: wrong `v` dropped; unknown callout/milestone enum dropped; invalid
+  `iid` (non-UUID) dropped; bad handle shape dropped; oversized fields dropped.
+- rate limiting: per-`iid` throttle trips; **global inbound cap** trips even
+  when `iid`s are rotated (defeats ID-rotation flooding).
+- handle gen/persist + reroll; installation ID persistence; **"reset online
+  identity"** clears session + handle + installation ID.
+- presence dedupe: two presences sharing one installation-ID key count as one.
 - social hub teardown clears all UI state and stops publish/receive (kill
-  switch).
+  switch), while the **persisted anon session is retained**.
 - NoopTransport path: the game produces an **identical** determinism
   fingerprint (social never perturbs the sim).
 - All existing 94 tests remain green; determinism golden unchanged.
 
-## 16. Open items for spec review
-1. Callout enum contents/wording (§5.3) — final list OK?
-2. Consent copy (§8) — wording OK for the Play Store listing too?
-3. Telemetry: console-only in Phase 1 (no beacon) — acceptable?
+## 16. Decisions resolved in review (was: open items)
+- **Callouts:** ship `GG, NICE, LETSGO, OOPS, WAVE, COIN` (dropped `COOL`,
+  `ONMYWAY`). (§5.3)
+- **Consent copy:** finalized in §8; the same disclosure feeds the **Play Store
+  data-safety** section, which must list Supabase processing of pseudonymous
+  IDs + network metadata (IP).
+- **Diagnostics:** local/console only in Phase 1, **not** collected; Phase-2
+  gating uses the Supabase dashboard. (§10)
+- **Turnstile:** enable **invisible Cloudflare Turnstile on anonymous sign-in
+  before public launch** (Supabase strongly recommends CAPTCHA for anonymous
+  sign-ins). (§7.3)
+- **Terminology:** "moderation-minimized," not "moderation-free." (§1)
 
 ## References
 - Realtime getting started / publishable key + private channels:
   https://supabase.com/docs/guides/realtime/getting_started
 - Anonymous auth: https://supabase.com/docs/guides/auth/auth-anonymous
-- Realtime authorization (RLS on `realtime.messages`):
+- Realtime authorization (RLS authorizes channel capabilities at join time):
   https://supabase.com/docs/guides/realtime/authorization
-- Realtime usage accounting:
+- Realtime usage accounting (send + per-delivery):
   https://supabase.com/docs/guides/platform/manage-your-usage/realtime-messages
-- Realtime limits: https://supabase.com/docs/guides/realtime/limits
+- Realtime limits / rate limits (100 msgs/sec, 200 concurrent connections):
+  https://supabase.com/docs/guides/realtime/rate-limits
+- Google Play data safety form:
+  https://support.google.com/googleplay/android-developer/answer/10787469
