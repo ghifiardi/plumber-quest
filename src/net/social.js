@@ -10,6 +10,7 @@ export function createSocial({ config, transport, identity, handles, now = () =>
   let lastBySender = new Map();   // iid -> last accepted ts
   let windowStart = 0, windowCount = 0;
   let reconnectTimer = null, backoff = config.reconnectBaseMs;
+  let prevCount = null;           // last presence size (null = no sync yet)
   // §10 local diagnostics — console/dev only, NOT collected anywhere.
   const diag = { published: 0, accepted: 0, dropped: 0, reconnects: 0 };
 
@@ -55,7 +56,15 @@ export function createSocial({ config, transport, identity, handles, now = () =>
 
   function setPresence(members) {
     const ids = new Set((members || []).map((m) => m.iid));
-    state.count = ids.size;
+    const n = ids.size;
+    // Announce others coming/going — but stay silent on the first sync (which
+    // includes our own join) so we don't narrate ourselves.
+    if (prevCount !== null && state.online && n !== prevCount) {
+      state.ticker.push({ text: n > prevCount ? 'A player joined' : 'A player left', born: now() });
+      if (state.ticker.length > config.maxTicker) state.ticker.shift();
+    }
+    prevCount = n;
+    state.count = n;
     emit();
   }
 
@@ -93,7 +102,7 @@ export function createSocial({ config, transport, identity, handles, now = () =>
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     while (unsubs.length) { try { unsubs.pop()(); } catch {} }
     state.count = 0; state.bubbles = []; state.ticker = [];
-    lastBySender = new Map(); windowCount = 0;
+    lastBySender = new Map(); windowCount = 0; prevCount = null;
     try { await transport.disconnect(); } catch {}
     state.status = 'disconnected';
     if (typeof console !== 'undefined' && console.debug) console.debug('[social] diag', getDiag());

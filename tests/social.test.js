@@ -29,6 +29,17 @@ test('presence count dedupes by installation id', async () => {
   assertEqual(social.getState().count, 2, 'two distinct iids');
 });
 
+test('presence changes announce join/leave but stay silent on the first sync', async () => {
+  const { transport, social } = make();
+  await social.enable();
+  transport.__setPresence([{ iid: 'a' }]);                 // first sync (includes self) -> silent
+  assertEqual(social.getState().ticker.length, 0, 'first sync is silent');
+  transport.__setPresence([{ iid: 'a' }, { iid: 'b' }]);   // someone joined
+  assertEqual(social.getState().ticker.length, 1, 'join announced');
+  transport.__setPresence([{ iid: 'a' }]);                 // someone left
+  assertEqual(social.getState().ticker.length, 2, 'leave announced');
+});
+
 test('sendCallout publishes a well-formed payload', async () => {
   const { transport, social } = make();
   await social.enable();

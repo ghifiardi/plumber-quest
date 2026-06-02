@@ -133,7 +133,7 @@ const socialToggle = $('social-toggle'), calloutBtn = $('callout-btn'),
 
 function setOnlineUI(mode) {                // 'off' | 'connecting' | 'online' | 'retrying'
   const connected = mode === 'online';
-  socialToggle.textContent = mode === 'off' ? 'GO ONLINE ▸'
+  socialToggle.textContent = mode === 'off' ? "SEE WHO'S ONLINE"
     : mode === 'connecting' ? 'CONNECTING…'
     : connected ? 'ONLINE ◂' : 'RETRYING…';
   socialToggle.classList.toggle('on', mode !== 'off');

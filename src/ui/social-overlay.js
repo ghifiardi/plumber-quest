@@ -16,9 +16,14 @@ export function createSocialOverlay(ctx) {
     const onTitle = gameState === 'title' || gameState === 'difficultySelect';
 
     // Counter: top-centre on the title (the DOM handle sits at the left), tiny
-    // corner badge in-game.
-    text(`▸ ~${state.count} PLAYING`, onTitle ? W / 2 : W - 4, onTitle ? 4 : 22,
-      '#7fe6c8', 8, onTitle ? 'center' : 'right');
+    // corner badge in-game. Wording makes "are others here?" unmistakable.
+    if (onTitle) {
+      const others = state.count > 1;
+      const label = others ? `${state.count} PLAYERS ONLINE` : 'JUST YOU ONLINE';
+      text(label, W / 2, 4, others ? '#ffd23f' : '#7fe6c8', 8, 'center');
+    } else {
+      text(`▸ ${state.count} online`, W - 4, 22, '#7fe6c8', 8, 'right');
+    }
 
     // Right-side activity feed (avoids the bottom pills / top handle entirely):
     // fading callout bubbles, then the most recent milestones as dim lines.
