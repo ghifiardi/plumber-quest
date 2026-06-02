@@ -40,10 +40,17 @@ async function buildSupabaseSocial() {
 }
 async function goOnline() {
   if (!SOCIAL.enabled) return;
-  social = await buildSupabaseSocial();
-  await social.enable();
-  localStorage.setItem(ONLINE_KEY, '1');
-  refreshSocialUI(true);
+  try {                                   // never let a failed connect/import block the game (§13)
+    social = await buildSupabaseSocial();
+    await social.enable();
+    localStorage.setItem(ONLINE_KEY, '1');
+    refreshSocialUI(true);
+  } catch (err) {
+    console.warn('[social] could not go online:', err);
+    social = createSocial({ config: SOCIAL, transport: createNoopTransport(), identity, handles });
+    localStorage.setItem(ONLINE_KEY, '0');
+    refreshSocialUI(false);
+  }
 }
 async function goOffline() {
   await social.disable();
