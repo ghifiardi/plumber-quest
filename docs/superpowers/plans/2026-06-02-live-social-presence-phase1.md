@@ -124,7 +124,9 @@ export const SOCIAL = {
   supabasePublishableKey: 'sb_publishable_REPLACE_ME',
 
   // Exact-pinned supabase-js, dynamically imported only after opt-in.
-  sdkUrl: 'https://esm.sh/@supabase/supabase-js@2.45.4',
+  // NOTE: the publishable-key format needs a recent SDK (>= ~2.49); pin a
+  // current version (e.g. 2.107.0), not an old one.
+  sdkUrl: 'https://esm.sh/@supabase/supabase-js@2.107.0',
 
   // Single Phase-1 channel.
   room: 'lobby',
@@ -1347,3 +1349,12 @@ git add -A && git commit -m "chore: finalize social Phase 1 verification" || ech
 - **Do not** import anything from `src/net/*` or `src/ui/social-overlay.js` into `src/game/world.js` or `src/render/renderer.js`. The overlay is drawn from `main.js` only, after the renderer. This preserves determinism and the read-only-render contract.
 - The publishable key is safe to commit; never commit a Supabase **secret** key.
 - `supabase-transport.js` is the only module without unit tests by design (real network/auth). Keep it thin; put any logic worth testing in `social.js`/`schema.js`.
+
+## Post-live-smoke polish (applied after Task 14 verification)
+
+Live two-tab testing surfaced three cosmetic issues (fixed + re-verified):
+1. **Counter overlapped the handle** → moved DOM `#social-handle` below the toggle (`top:24px;left:6px`); canvas counter stays top-centre.
+2. **Ticker marquee overlapped the bottom pills** → replaced the bottom marquee with a right-side activity feed (fading callout bubbles, then last 3 milestones as dim lines); pills stay clean.
+3. **Toggle optimistically showed "ONLINE"** on a failed connect → `main.js` subscribes to hub status and drives `CONNECTING… → ONLINE ◂` / `RETRYING…`; callout button + handle appear only once truly `connected`.
+
+Also: pinned `supabase-js` bumped to `2.107.0` (publishable-key support). Live smoke confirmed anon auth (signup 200), private-channel SUBSCRIBED, presence dedupe (~2), callout + milestone delivery, per-sender throttle, and the session-preserving offline kill switch — all against a real project.

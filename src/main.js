@@ -38,25 +38,37 @@ async function buildSupabaseSocial() {
   const { createSupabaseTransport } = await import('./net/supabase-transport.js');  // lazy
   return createSocial({ config: SOCIAL, transport: createSupabaseTransport(SOCIAL), identity, handles });
 }
+let statusUnsub = null;
+function bindSocialStatus() {              // reflect REAL connection status on the toggle
+  if (statusUnsub) { statusUnsub(); statusUnsub = null; }
+  statusUnsub = social.subscribe((s) => {
+    if (localStorage.getItem(ONLINE_KEY) !== '1') return;
+    setOnlineUI(s.status === 'connected' ? 'online'
+      : s.status === 'connecting' ? 'connecting' : 'retrying');
+  });
+}
 async function goOnline() {
   if (!SOCIAL.enabled) return;
+  localStorage.setItem(ONLINE_KEY, '1');
+  setOnlineUI('connecting');
   try {                                   // never let a failed connect/import block the game (§13)
     social = await buildSupabaseSocial();
+    bindSocialStatus();                   // status subscription drives the label from here
     await social.enable();
-    localStorage.setItem(ONLINE_KEY, '1');
-    refreshSocialUI(true);
   } catch (err) {
     console.warn('[social] could not go online:', err);
+    if (statusUnsub) { statusUnsub(); statusUnsub = null; }
     social = createSocial({ config: SOCIAL, transport: createNoopTransport(), identity, handles });
     localStorage.setItem(ONLINE_KEY, '0');
-    refreshSocialUI(false);
+    setOnlineUI('off');
   }
 }
 async function goOffline() {
+  if (statusUnsub) { statusUnsub(); statusUnsub = null; }
   await social.disable();
   social = createSocial({ config: SOCIAL, transport: createNoopTransport(), identity, handles });
   localStorage.setItem(ONLINE_KEY, '0');
-  refreshSocialUI(false);
+  setOnlineUI('off');
 }
 
 // Haptic feedback (Android Chrome supports navigator.vibrate; iOS Safari no-ops safely).
@@ -119,11 +131,14 @@ const socialToggle = $('social-toggle'), calloutBtn = $('callout-btn'),
   handleBox = $('social-handle'), handleName = $('handle-name'),
   calloutMenu = $('callout-menu'), notice = $('social-notice');
 
-function refreshSocialUI(on) {
-  socialToggle.textContent = on ? 'ONLINE ◂' : 'GO ONLINE ▸';
-  socialToggle.classList.toggle('on', on);
-  calloutBtn.hidden = !on; handleBox.hidden = !on;
-  handleName.textContent = on ? handles.loadHandle() : '';
+function setOnlineUI(mode) {                // 'off' | 'connecting' | 'online' | 'retrying'
+  const connected = mode === 'online';
+  socialToggle.textContent = mode === 'off' ? 'GO ONLINE ▸'
+    : mode === 'connecting' ? 'CONNECTING…'
+    : connected ? 'ONLINE ◂' : 'RETRYING…';
+  socialToggle.classList.toggle('on', mode !== 'off');
+  calloutBtn.hidden = !connected; handleBox.hidden = !connected;
+  handleName.textContent = connected ? handles.loadHandle() : '';
 }
 
 socialToggle.addEventListener('click', () => {
@@ -155,7 +170,7 @@ window.addEventListener('keydown', (e) => { if (e.code === 'KeyC' && !calloutBtn
 
 // Restore prior preference on load (re-consent already given previously).
 if (SOCIAL.enabled && localStorage.getItem(ONLINE_KEY) === '1') goOnline();
-else refreshSocialUI(false);
+else setOnlineUI('off');
 
 // Begin a run with the currently-selected difficulty (music start owned by afterFrame).
 function startRun() { gs.startSelected(); cam.bounds = gs.world.bounds; }

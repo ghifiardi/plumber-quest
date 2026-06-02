@@ -6,12 +6,13 @@ export const SOCIAL = {
   // Hard feature flag: when false, the app never loads any network code.
   enabled: true,
 
-  // From Task 0 — replace with this project's real values:
-  supabaseUrl: 'https://YOUR-PROJECT.supabase.co',
-  supabasePublishableKey: 'sb_publishable_REPLACE_ME',
+  // From Task 0 — this project's real values:
+  supabaseUrl: 'https://incarccrilbeslpympwr.supabase.co',
+  supabasePublishableKey: 'sb_publishable_j7xFEURK3h0LQ6chdTZOCg_8VwmvGLY',
 
   // Exact-pinned supabase-js, dynamically imported only after opt-in.
-  sdkUrl: 'https://esm.sh/@supabase/supabase-js@2.45.4',
+  // (Publishable-key format requires a recent SDK; 2.45.x is too old.)
+  sdkUrl: 'https://esm.sh/@supabase/supabase-js@2.107.0',
 
   // Single Phase-1 channel.
   room: 'lobby',
