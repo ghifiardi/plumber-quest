@@ -1,7 +1,7 @@
 # Live Social Presence — Design Spec
 
 - **Date:** 2026-06-02
-- **Status:** Rev 2 — security/cost review findings incorporated (auth-vs-abuse boundary clarified, `iid` in payloads + global rate cap, session-preserving kill switch, `f·N²` ghost cost, age-based cleanup, accurate privacy copy, diagnostics-not-telemetry). Awaiting final spec sign-off before writing-plans.
+- **Status:** Rev 3 — final review incorporated (Android offline-capable not offline-only, disable stops auth auto-refresh, project-wide ghost budget, privacy/Play-Store doc updates as plan items, Edge-Function revokes direct write, cleanup rotates auth only, pinned/lazy SDK, explicit `noop-transport.js`). Ready for the Phase-1 implementation plan on sign-off.
 - **Author:** Ghifi + Claude (brainstorming session)
 - **Feature branch:** `feat/live-social-presence`
 
@@ -63,16 +63,21 @@ Clean adapter-based modules. The game depends only on the `social` hub and the
 ```
 src/net/
   transport.js          # RealtimeTransport interface (contract + JSDoc types)
-  supabase-transport.js # concrete adapter (loads supabase-js from CDN)
-  fake-transport.js     # in-memory adapter for tests + offline/no-op
+  supabase-transport.js # concrete adapter; LAZILY loads a PINNED supabase-js (only after opt-in)
+  noop-transport.js     # does nothing; used when social is disabled or offline
+  fake-transport.js     # in-memory loopback adapter for tests only
   handles.js            # auto handle gen + preset reroll lists; localStorage
   identity.js           # persisted installation ID + anon Supabase session
   social.js             # the hub: connect/teardown, validate, queue, expose state
-  config.js             # SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY + feature flag
+  config.js             # SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY + pinned SDK ver + feature flag
   schema.js             # payload schemas, version constant, enums, validators
 src/ui/
   social-overlay.js     # draws counter, callout bubbles, ticker AFTER the world
 ```
+
+The SDK is **not** in the initial bundle: `supabase-transport.js` dynamically
+imports a **version-pinned** supabase-js from CDN only when the player opts in,
+so the default offline/solo load stays lean and ships no network code paths.
 
 **Critical invariant — determinism isolation.** `world.js` (the sim) and its
 renderer never read or write network state. The social overlay maintains its
@@ -205,7 +210,9 @@ escalation if abuse appears:
    launch** — Supabase strongly recommends CAPTCHA for anonymous sign-ins; this
    raises the cost of mass session minting.
 2. Move broadcasts behind an **Edge Function** with payload validation +
-   per-user rate limits (the real server-side boundary).
+   per-user rate limits (the real server-side boundary) — and **revoke clients'
+   direct broadcast-write RLS permission** so the function is the *only* writer;
+   otherwise a modified client just bypasses it.
 3. Tighten/segment channels and lean on Supabase dashboard usage + logs (§10) to
    detect and respond.
 
@@ -219,11 +226,15 @@ escalation if abuse appears:
   > preset callouts, and level-clear or one-up events. No email or free-text
   > chat. Turn it off anytime."
 - Preference persisted in `localStorage`.
-- **Disable = kill switch (session preserved):** untrack presence, unsubscribe,
-  remove the channel + its auth, and clear all social UI state (counter,
-  bubbles, ticker); stop all publishing and receiving. **Keep the persisted
-  anonymous session** — signing out here would mint a new anonymous user on
-  every re-enable (§12). Re-enabling reconnects cleanly with the same identity.
+- **Disable = kill switch (session preserved, zero network):** untrack presence,
+  unsubscribe, remove the channel + its auth, and clear all social UI state
+  (counter, bubbles, ticker); stop all publishing and receiving. Also **cancel
+  reconnect timers and stop Supabase auth auto-refresh**
+  (`supabase.auth.stopAutoRefresh()`) so "online off" means *no* background
+  network activity. **Keep the persisted anonymous session** — signing out here
+  would mint a new anonymous user on every re-enable (§12). Re-enabling
+  **restarts auto-refresh before joining** and reconnects cleanly with the same
+  identity.
 - A separate **"Reset online identity"** action exists for users who want a
   fresh identity: it deletes the local session + handle + installation ID (a new
   anon user is created on the next enable).
@@ -270,8 +281,11 @@ Kept separate because the cost is quadratic, not linear.
 Supabase counts one message per **sent** broadcast **plus one per delivery**.
 So each sender at `f` Hz in a room of `N` costs `f · (1 + (N−1)) = f · N`
 messages/sec (its own send + delivery to `N−1` peers); across all `N` senders
-that is **≈ `f · N²` messages/sec** for the room. The current free-tier ceiling
-is **100 messages/sec**.
+that is **≈ `f · N²` messages/sec** for the room. The free-tier ceiling of
+**100 messages/sec is a PROJECT-WIDE cap**, shared across the `lobby` channel,
+Presence, **and every ghost shard at once** — not a per-room allowance. Two
+shards at 75/s each (150/s) already blow the cap before any lobby/presence
+traffic.
 
 | f (Hz) | Players (N) | msgs/sec ≈ |
 |---|---|---|
@@ -283,10 +297,14 @@ is **100 messages/sec**.
 ### 11.2 Required constraints before building ghosts
 - **Sampling 2–3 Hz** (not 10), with **client interpolation** to smooth motion.
 - **Room cap ≤ 5–6 per shard** and **sharding**: join the least-full shard of
-  `ghosts:<level>:<shard>` up to the cap. Per the `f·N²` model, 3 Hz × 5 = 75/s
-  and 2 Hz × 6 = 72/s both stay under the 100 msgs/sec ceiling.
-- **Explicit per-room message budget** kept under the tier ceiling, with
-  client-side backpressure (drop frames before exceeding budget).
+  `ghosts:<level>:<shard>` up to the cap. A single shard at 3 Hz × 5 = 75/s fits,
+  but only *one* shard's worth of headroom exists on the free tier.
+- **Project-wide message budget**, not per-room: sum `lobby` + Presence + **all
+  active ghost shards** and keep the total under the 100 msgs/sec project cap,
+  with client-side backpressure (drop frames before exceeding budget). Concurrent
+  shards must share the single budget — so shard **discovery and capacity
+  allocation across the whole project** is an explicit Phase-2 design item (a paid
+  tier or an Edge-Function fan-out is likely required for real concurrency).
 - Ghosts ride a **separate channel** from the Phase-1 `lobby` channel.
 - Gate the build on Phase-1 Supabase **dashboard usage** showing headroom.
 
@@ -300,16 +318,22 @@ them automatically. Mitigations:
   column, so the scheduled cleanup (SQL cron / Edge Function) deletes anonymous
   users by creation age — `created_at < now() - interval '30 days'` (the
   Supabase-documented approach) — not by "recent activity."
-- **Transparent recovery:** if a client's persisted session belongs to a
-  since-deleted user, sign-in fails gracefully and the client creates a **fresh
-  anonymous session** on the next enable (a new handle/ID may result). No error
+- **Transparent recovery (rotate auth only):** if a client's persisted session
+  belongs to a since-deleted user, it creates a **fresh anonymous session** on
+  the next enable. Only the **Supabase auth session** rotates — the local
+  **handle and `installationId` are preserved** (so the player keeps their
+  identity), unless they explicitly use "Reset online identity." No error
   surfaces to the player.
 
 ## 13. Offline-first / graceful degradation
 
-- With the feature flag off, social disabled, no network, or in the offline
-  Android app: `social.js` uses a no-op path; the game runs identically with no
+- When the feature flag is off, social is disabled, or there is no network:
+  `social.js` uses the **`NoopTransport`**; the game runs identically with no
   errors and the social UI is hidden.
+- **Android is offline-capable, not offline-only.** The app keeps working with
+  no network exactly as today; online mode functions when the player explicitly
+  enables it *and* a network is available. (So the Play Store data-safety
+  disclosure is accurate: data is shared only in that opted-in + online state.)
 - All transport calls are guarded; connection failures trigger **exponential
   reconnect backoff (1s → 30s, jittered)** and never block or affect gameplay.
 
@@ -319,6 +343,8 @@ them automatically. Mitigations:
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY` — Supabase's current **publishable key**
   (intended for client-side use; not the legacy `anon` key terminology).
+- `SUPABASE_JS_VERSION` + `SUPABASE_JS_URL` — an **exact pinned** supabase-js
+  version (no `@latest`), dynamically imported only after opt-in.
 - `SOCIAL_ENABLED` feature flag (hard off-switch independent of consent).
 
 ## 15. Testing
@@ -332,9 +358,11 @@ Via `fake-transport.js` (no real network in tests):
   identity"** clears session + handle + installation ID.
 - presence dedupe: two presences sharing one installation-ID key count as one.
 - social hub teardown clears all UI state and stops publish/receive (kill
-  switch), while the **persisted anon session is retained**.
-- NoopTransport path: the game produces an **identical** determinism
-  fingerprint (social never perturbs the sim).
+  switch), **cancels reconnect timers, stops auth auto-refresh**, and **retains
+  the persisted anon session** (verified via spies on the fake transport).
+- `NoopTransport` (the disabled/offline adapter, distinct from the test-only
+  `FakeTransport`): the game produces an **identical** determinism fingerprint
+  (social never perturbs the sim).
 - All existing 94 tests remain green; determinism golden unchanged.
 
 ## 16. Decisions resolved in review (was: open items)
@@ -349,6 +377,29 @@ Via `fake-transport.js` (no real network in tests):
   before public launch** (Supabase strongly recommends CAPTCHA for anonymous
   sign-ins). (§7.3)
 - **Terminology:** "moderation-minimized," not "moderation-free." (§1)
+
+## 17. Documentation & store-listing updates (ship WITH social, not before)
+
+Two existing docs currently assert the app collects/transmits nothing; both
+become inaccurate the moment online mode can be enabled. The implementation plan
+**must** include updating them in the same change that ships social:
+
+- **`docs/privacy-policy.html`** — today states "it does not collect, store, or
+  share any personal information" and "We do not have servers that receive data
+  from the app." Revise to disclose: when the player **opts into online mode**,
+  the app shares a **pseudonymous player ID + handle, online status, preset
+  callouts, and level-clear/one-up events** via **Supabase (a third-party
+  processor)**, which also processes connection metadata including **IP
+  address**; nothing is shared while online mode is off; how to turn it off; and
+  the ~30-day anonymous-user cleanup.
+- **`docs/PLAY_STORE.md`** — today says the Data-safety form should declare the
+  app "collects no data and uses only the INTERNET permission for Capacitor's
+  local server." Update the guidance: the **Data safety form must disclose
+  conditional data sharing** (app activity + device/other IDs) when online mode
+  is enabled, and that INTERNET is **also** used for Supabase Realtime.
+
+These edits are gated to land **only** alongside the feature (not while the app
+still ships without social).
 
 ## References
 - Realtime getting started / publishable key + private channels:
