@@ -27,6 +27,7 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
     animClock: 0,                         // seconds; advanced in update/updateScripted, read by renderer
     popups: [],                           // floating score text {text,x,y,life} — cosmetic, sim-updated
     shake: 0,                             // screen-shake magnitude (px), decays each step
+    fireworks: [],                        // {x,y,t} celebratory bursts on a lucky clear
     _spawnQ: [], _removeQ: [],
   };
   w.player.fireballs = 0;
@@ -36,7 +37,13 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
   w.remove = (e) => { w._removeQ.push(e); };
   // simulation-owned scoring (mutated BEFORE events are emitted — spec §6)
   w.addScore = (n) => { w.session.score += n; };
-  w.addCoin  = () => { w.session.coins += 1; w.session.score += COIN_SCORE; };
+  w.addCoin  = () => {
+    w.session.coins += 1; w.session.score += COIN_SCORE;
+    if (w.session.coins >= 100) {                          // every 100 coins = a bonus life
+      w.session.coins -= 100; w.session.lives += 1;
+      w.popup('1UP', w.player.x, w.player.y - 6); w.emit({ type: 'one-up' });
+    }
+  };
   // pickup factory injection keeps tiles.js decoupled from pickups.js
   w.spawnPickup = (kind, x, y) => { w.spawn(kind === 'mushroom' ? makeMushroom(x, y) : makeFlower(x, y)); };
   // events accumulate across all fixed steps; drained once per rendered frame
@@ -52,6 +59,10 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
       for (const p of w.popups) { p.y -= 26 * dt; p.life -= dt; }
       w.popups = w.popups.filter(p => p.life > 0);
     }
+    if (w.fireworks.length) {
+      for (const fw of w.fireworks) fw.t += dt;
+      w.fireworks = w.fireworks.filter(fw => fw.t < 0.8);
+    }
   };
 
   // scripted (non-physics) animation driven by game-state during dying / level-clear.
@@ -65,6 +76,10 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
     // grab the pole at the top: snap the hero onto it, clinging (facing left)
     w.player.x = w.level.finish.x; w.player.y = w.level.finish.y;
     w.player.vx = 0; w.player.vy = 0; w.player.facing = -1; w.player.onGround = false;
+    // classic lucky-digit fireworks: clearing with the time ending in 1/3/6 launches that many.
+    const digit = Math.floor(Math.max(0, w.timeRemaining)) % 10;
+    w._fireworksLeft = (digit === 1 || digit === 3 || digit === 6) ? digit : 0;
+    w._fwTimer = 0.5;
   };
   // hero rests on top of the 2-row ground at the base of the pole
   const clearGroundY = () => w.bounds.bottom - 32 - w.player.h;
@@ -88,6 +103,16 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
         w.player.prevX = w.player.x; w.player.prevY = w.player.y;
         w.player.y = groundY; w.player.facing = 1;
         w.player.x += 40 * dt;
+      }
+      // launch lucky-clear fireworks one at a time (deterministic spread, no RNG in sim)
+      if (w._fireworksLeft > 0) {
+        w._fwTimer -= dt;
+        if (w._fwTimer <= 0) {
+          const i = w.fireworks.length;
+          w.fireworks.push({ x: w.level.finish.x - 70 + (i % 4) * 40, y: 36 + (i % 3) * 26, t: 0 });
+          w.emit({ type: 'firework' });
+          w._fireworksLeft -= 1; w._fwTimer = 0.38;
+        }
       }
     }
   };

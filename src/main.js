@@ -26,7 +26,7 @@ const haptic = (pattern) => { if (pattern && navigator.vibrate) { try { navigato
 // Subtle buzz patterns (ms) for notable game moments. Frequent events (coins) are omitted.
 const EVENT_HAPTIC = {
   'enemy-stomped': 18, 'brick-broken': [8, 12, 8], 'powerup-collected': [12, 24],
-  'player-hit': 30, 'player-died': [50, 30, 50], 'flag-reached': [20, 20, 40],
+  'player-hit': 30, 'player-died': [50, 30, 50], 'flag-reached': [20, 20, 40], 'one-up': [12, 30, 12],
 };
 
 // worldFactory receives the SAME session object game-state owns, so simulation scoring

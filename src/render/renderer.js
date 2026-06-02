@@ -120,6 +120,23 @@ export function createRenderer(canvas) {
     }
 
     drawPopups(world, cam);
+    drawFireworks(world, cam);
+  }
+
+  // Expanding firework bursts (read-only over world.fireworks).
+  const FW_COLORS = ['#ffd23f', '#ff5a4d', '#7fdfff', '#2ecc40', '#ffffff'];
+  function drawFireworks(world, cam) {
+    if (!world.fireworks || !world.fireworks.length) return;
+    for (const fw of world.fireworks) {
+      const cx = Math.round(fw.x - cam.x), cy = Math.round(fw.y);
+      const r = fw.t * 90, a = Math.max(0, 1 - fw.t / 0.8);
+      ctx.globalAlpha = a; ctx.fillStyle = FW_COLORS[(Math.floor(fw.x) >> 4) % FW_COLORS.length];
+      for (let k = 0; k < 8; k++) {
+        const ang = (k / 8) * Math.PI * 2;
+        ctx.fillRect(Math.round(cx + Math.cos(ang) * r) - 1, Math.round(cy + Math.sin(ang) * r) - 1, 2, 2);
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   // Floating "+100/+200/+1000" score text — read-only over world.popups.

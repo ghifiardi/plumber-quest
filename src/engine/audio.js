@@ -7,11 +7,14 @@ const SFX = {
   fireball:{ f: 740, type:'square', dur:0.08, slide:-200 },
   death:  { f: 400, type:'square', dur:0.5,  slide:-300 },
   flag:   { f: 523, type:'square', dur:0.4,  slide:500 },
+  firework:{ f: 1200, type:'square', dur:0.12, slide:700 },   // high rising pop
+  oneup:  { f: 784, type:'square', dur:0.22, slide:520 },     // cheerful 1-up
 };
 const EVENT_SFX = {
   'jump':'jump','coin-collected':'coin','enemy-stomped':'stomp','powerup-collected':'powerup',
   'powerup-spawned':'powerup','block-hit':'bump','brick-broken':'bump','fireball-fired':'fireball',
   'player-died':'death','player-hit':'stomp','flag-reached':'flag',
+  'firework':'firework','one-up':'oneup',
 };
 
 export function createAudio({
