@@ -256,16 +256,193 @@ export function createRenderer(canvas) {
     centerText(isCoarse ? '◀ ▶ choose    A start' : '← → choose    ENTER start', H/2 + 50, '#bcd', 7);
   }
 
+  // ===== TITLE-SCREEN KEY ART ================================================
+  // A composed splash echoing the promo poster, drawn entirely in-engine so it
+  // stays crisp at any resolution and matches the in-game pixel art.
+
+  function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function starShape(cx, cy, r, color) {
+    ctx.fillStyle = color; ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const ang = -Math.PI / 2 + i * Math.PI / 5;
+      const rad = i % 2 ? r * 0.44 : r;
+      ctx.lineTo(cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Small plumber's wrench glyph (used as a feature-pill icon).
+  function wrenchIcon(cx, cy, s, color) {
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-Math.PI / 4);
+    ctx.strokeStyle = color; ctx.lineCap = 'round';
+    ctx.lineWidth = s * 0.26;
+    ctx.beginPath(); ctx.moveTo(0, s * 0.55); ctx.lineTo(0, -s * 0.12); ctx.stroke();
+    ctx.lineWidth = s * 0.2;
+    ctx.beginPath(); ctx.arc(0, -s * 0.36, s * 0.32, Math.PI * 0.18, Math.PI * 1.82); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Chunky extruded logo word: dark outline + coloured face + lighter top half + side depth.
+  function logoWord(str, cx, baseY, size, face, top, side) {
+    ctx.save();
+    ctx.font = `900 ${size}px "Arial Black", Impact, "Trebuchet MS", system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    const depth = Math.max(2, Math.round(size * 0.13));
+    for (let i = depth; i >= 1; i--) { ctx.fillStyle = side; ctx.fillText(str, cx + i, baseY + i); }
+    ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(3, size * 0.13); ctx.strokeStyle = '#16122b';
+    ctx.strokeText(str, cx, baseY);
+    ctx.fillStyle = face; ctx.fillText(str, cx, baseY);
+    ctx.save();                                            // lighter top band for a 2-tone bevel
+    ctx.beginPath(); ctx.rect(0, baseY - size, W, size * 0.46); ctx.clip();
+    ctx.fillStyle = top; ctx.fillText(str, cx, baseY);
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function ribbon(text, cy, halfW) {
+    const h = 16, x0 = Math.round(W / 2 - halfW), x1 = Math.round(W / 2 + halfW);
+    ctx.fillStyle = '#7a1f24';                             // folded tails behind the band
+    ctx.beginPath(); ctx.moveTo(x0 - 14, cy - h / 2 - 3); ctx.lineTo(x0, cy - h / 2); ctx.lineTo(x0, cy + h / 2); ctx.lineTo(x0 - 14, cy + h / 2 + 3); ctx.lineTo(x0 - 8, cy); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x1 + 14, cy - h / 2 - 3); ctx.lineTo(x1, cy - h / 2); ctx.lineTo(x1, cy + h / 2); ctx.lineTo(x1 + 14, cy + h / 2 + 3); ctx.lineTo(x1 + 8, cy); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#c0392b'; ctx.fillRect(x0, cy - h / 2, halfW * 2, h);
+    ctx.fillStyle = '#9c2b22'; ctx.fillRect(x0, cy + h / 2 - 3, halfW * 2, 3);
+    ctx.strokeStyle = '#7a1f24'; ctx.lineWidth = 2; ctx.strokeRect(x0, cy - h / 2, halfW * 2, h);
+    starShape(x0 + 12, cy, 4, '#ffd23f'); starShape(x1 - 12, cy, 4, '#ffd23f');
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 9px "Trebuchet MS", system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, W / 2, cy + 1);
+  }
+
+  function titleGround(gy) {
+    ctx.fillStyle = '#4fa85a'; ctx.fillRect(0, gy, W, 7);
+    ctx.fillStyle = '#3c8c46'; ctx.fillRect(0, gy + 7, W, 3);
+    ctx.fillStyle = '#6b4a2b'; ctx.fillRect(0, gy + 10, W, H - (gy + 10));
+    ctx.fillStyle = '#5a3d24'; for (let x = 6; x < W; x += 20) ctx.fillRect(x, gy + 16, 9, 4);
+    ctx.fillStyle = '#5fbf6a'; for (let x = 2; x < W; x += 9) ctx.fillRect(x, gy - 2, 2, 3);
+  }
+
+  function titleStars(clock) {
+    const pts = [[20,16],[60,30],[110,12],[150,26],[196,14],[236,30],[88,40],[170,42],[40,48],[214,46]];
+    for (let i = 0; i < pts.length; i++) {
+      const a = 0.45 + 0.45 * Math.sin(clock * 2 + i);
+      ctx.globalAlpha = Math.max(0.15, a); ctx.fillStyle = '#eaf4ff';
+      ctx.fillRect(pts[i][0], pts[i][1], 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function featurePills(y) {
+    const items = [
+      { l1: 'EXPLORE', l2: 'NEW WORLDS', ic: 'star' },
+      { l1: 'POWER UP', l2: 'YOUR TOOLS', ic: 'wrench' },
+      { l1: 'COLLECT', l2: '& UPGRADE', ic: 'coin' },
+    ];
+    const m = 6, gap = 4, pw = (W - 2 * m - 2 * gap) / 3, ph = 34;
+    for (let i = 0; i < 3; i++) {
+      const px = m + i * (pw + gap), cx = px + pw / 2, it = items[i];
+      ctx.fillStyle = 'rgba(15,21,40,0.92)'; roundRectPath(px, y, pw, ph, 6); ctx.fill();
+      ctx.strokeStyle = 'rgba(122,152,205,0.5)'; ctx.lineWidth = 1; roundRectPath(px + 0.5, y + 0.5, pw - 1, ph - 1, 6); ctx.stroke();
+      if (it.ic === 'star') starShape(cx, y + 9, 6, '#ffd23f');
+      else if (it.ic === 'wrench') wrenchIcon(cx, y + 9, 13, '#cfd9e2');
+      else ctx.drawImage(sprites.coinFrames[0], Math.round(cx - 6), y + 3, 11, 12);
+      ctx.fillStyle = '#dfe8f5'; ctx.font = 'bold 7px "Trebuchet MS", system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(it.l1, cx, y + 18); ctx.fillText(it.l2, cx, y + 26);
+    }
+  }
+
+  // Twinkling 4-point sparkle (excitement accents around the hero).
+  function sparkle(cx, cy, r, clock, phase) {
+    const k = 0.55 + 0.45 * Math.sin(clock * 5 + phase);
+    const rr = r * k;
+    ctx.save(); ctx.globalAlpha = 0.4 + 0.6 * k; ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - rr); ctx.lineTo(cx + rr * 0.28, cy - rr * 0.28);
+    ctx.lineTo(cx + rr, cy); ctx.lineTo(cx + rr * 0.28, cy + rr * 0.28);
+    ctx.lineTo(cx, cy + rr); ctx.lineTo(cx - rr * 0.28, cy + rr * 0.28);
+    ctx.lineTo(cx - rr, cy); ctx.lineTo(cx - rr * 0.28, cy - rr * 0.28);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+
+  // Dust puffs kicked up behind a runner's feet (drift back-and-up, then fade).
+  function runDust(hx, gy, clock) {
+    for (const ph of [0, 0.5]) {
+      const t = (clock * 1.7 + ph) % 1;
+      const px = hx - 2 - t * 16, py = gy - 1 - t * 5, r = 1.5 + t * 4;
+      ctx.save(); ctx.globalAlpha = 0.5 * (1 - t); ctx.fillStyle = '#d6c8b4';
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+  }
+
+  // Bold, pulsing call-to-action button — the primary "play me" hook.
+  function drawPlayButton(cx, cy, clock, label) {
+    const pulse = 1 + 0.045 * Math.sin(clock * 4.2);
+    const w = 138 * pulse, h = 30 * pulse, x = cx - w / 2, y = cy - h / 2;
+    ctx.save();                                            // soft pulsing glow
+    ctx.globalAlpha = 0.18 + 0.16 * (0.5 + 0.5 * Math.sin(clock * 4.2));
+    ctx.fillStyle = '#ffe46b'; roundRectPath(x - 7, y - 7, w + 14, h + 14, 14); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; roundRectPath(x + 2, y + 3, w, h, 10); ctx.fill();   // drop shadow
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#ffe572'); g.addColorStop(1, '#f0a81e');
+    ctx.fillStyle = g; roundRectPath(x, y, w, h, 10); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#7a4a06'; roundRectPath(x, y, w, h, 10); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)'; roundRectPath(x + 5, y + 3, w - 10, h * 0.36, 7); ctx.fill();
+    // play triangle + label
+    const fs = Math.round(13 * pulse);
+    ctx.fillStyle = '#5a2e00'; ctx.font = `bold ${fs}px "Trebuchet MS", system-ui, sans-serif`;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(label).width, triW = 9, gap = 6, total = triW + gap + tw;
+    const tx = cx - total / 2;
+    ctx.beginPath(); ctx.moveTo(tx, cy - 6); ctx.lineTo(tx + triW, cy); ctx.lineTo(tx, cy + 6); ctx.closePath(); ctx.fill();
+    ctx.fillText(label, tx + triW + gap, cy + 1);
+    ctx.textAlign = 'left';
+  }
+
   function drawTitle() {
     begin();
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#1f3f8a'); g.addColorStop(1, '#3a7bd5');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    const sz = sprites.heroSize.big;
-    ctx.drawImage(sprites.hero.big.stand, Math.round(W/2 - sz.w), Math.round(H/2 - 64), sz.w * 2, sz.h * 2);
-    centerText('PLUMBER QUEST', H/2 + 16, '#fff', 12);
-    if (blink()) centerText(isCoarse ? 'TAP TO PLAY' : 'PRESS START', H/2 + 38, '#ffd23f', 8);
-    if (isCoarse) centerText('◀ ▶  move    A jump    B run/fire', H/2 + 60, '#bcd', 7);
+    const clock = (typeof performance !== 'undefined' ? performance.now() / 1000 : 0);
+    const gy = 164;                                        // grass line the scene stands on
+
+    // --- background: sky, twinkling stars, drifting clouds, parallax hills, ground ---
+    drawSky(); titleStars(clock); drawClouds(clock); drawHills(0);
+    titleGround(gy);
+
+    // --- supporting props (kept light so the hero is the focal point) ---
+    ctx.drawImage(sprites.coinFrames[0], 68, 116, 13, 15);                         // floating coin (left)
+    ctx.drawImage(sprites.coinBlockFrames[shimmerFrame(clock)], 162, 108, 18, 18); // ? block (right)
+    ctx.drawImage(sprites.flower, 28, gy - 18, 16, 18);                            // flower (far left)
+    ctx.drawImage(sprites.pipe, 216, gy - 44, 22, 22); ctx.drawImage(sprites.pipeDeco, 216, gy - 22, 22, 22); // pipe (far right)
+    const bz = sprites.goombaSize;                                                 // blob foe (right of hero)
+    ctx.drawImage(sprites.goombaFrames[goombaFrame(clock)], 178, gy - bz.h * 0.9, bz.w * 0.9, bz.h * 0.9);
+
+    // --- HERO: big, centred, running in place toward the adventure ---
+    const pose = (Math.floor(clock * 9) % 2) ? 'walkB' : 'walkA';   // ~9 strides/sec
+    const bounce = Math.round(Math.abs(Math.sin(clock * 9)) * 2);   // small stride bob
+    const hs = 2.8, hw = 16 * hs, hh = 24 * hs;
+    const hx = Math.round(W / 2 - hw / 2), hy = Math.round(gy - hh - bounce);
+    ctx.save(); ctx.globalAlpha = 0.26; ctx.fillStyle = '#163a12';  // steady ground shadow
+    ctx.beginPath(); ctx.ellipse(W / 2, gy + 1, hw * 0.34, 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    runDust(hx, gy, clock);                                          // dust kicked up behind the feet
+    ctx.drawImage(sprites.hero.big[pose], hx, hy, hw, hh);
+    sparkle(hx + 2, hy + 16, 4, clock, 0); sparkle(hx + hw - 2, hy + 10, 5, clock, 2.1);   // excitement sparkles
+
+    // --- logo + ribbon ---
+    logoWord('PLUMBER', W / 2, 40, 26, '#f4a72b', '#ffd84d', '#9c5a12');
+    logoWord('QUEST', W / 2, 66, 27, '#d7e4f1', '#ffffff', '#5a7290');
+    ribbon('A RETRO ADVENTURE', 82, 78);
+
+    // --- primary call-to-action + feature pills ---
+    drawPlayButton(W / 2, 186, clock, isCoarse ? 'TAP TO PLAY' : 'PRESS START');
+    featurePills(205);
   }
 
   return { draw, drawTitle, drawDifficultySelect, drawIntro, drawGameOver, drawWin };
