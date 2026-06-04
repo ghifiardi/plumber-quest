@@ -11,6 +11,8 @@ const SPRITE_FOR = {
 // (title/intro/game-over/win) are drawn by their own functions.
 const OVERLAY_TEXT = { 'paused': 'PAUSED', 'level-clear': 'LEVEL CLEAR!' };
 
+export const wipeProgress = (t, dur) => Math.max(0, Math.min(1, t / dur));
+
 // Pure cosmetic squash/stretch from read-only player state + a landing impulse
 // (landT in 0..1, decays in the renderer). Volume-ish: sx*sy ≈ 1.
 export function heroSquash(p, landT) {
@@ -52,6 +54,8 @@ export function createRenderer(canvas) {
   const shimmerFrame = (c) => Math.floor(c * 3) % 3;
   const goombaFrame = (c) => Math.floor(c * 6) % 2;
   const heroAnim = { prevOnGround: true, landT: 0 };
+  const trans = { prevState: null, t: 0, kind: null };   // kind: 'in' (level start) | 'out' (level clear)
+  const WIPE_IN = 0.3, WIPE_OUT = 0.35;
 
   function blit(src, dx, dy, dw, dh, flip) {
     if (flip) { ctx.save(); ctx.translate(dx + dw, dy); ctx.scale(-1, 1); ctx.drawImage(src, 0, 0, dw, dh); ctx.restore(); }
@@ -180,6 +184,13 @@ export function createRenderer(canvas) {
     cam.follow(interp(world.player, alpha));      // mutates cam only, never world
     const clock = world.animClock || 0;
 
+    if (state !== trans.prevState) {
+      if (state === 'playing') { trans.kind = 'in'; trans.t = 0; }
+      else if (state === 'level-clear') { trans.kind = 'out'; trans.t = 0; }
+      trans.prevState = state;
+    }
+    if (trans.kind) trans.t += 1 / 60;
+
     drawSky(); drawClouds(clock); drawHills(cam.x);   // steady background
 
     const s = world.shake || 0;                       // screen shake (deterministic, no random)
@@ -189,8 +200,14 @@ export function createRenderer(canvas) {
     drawWorld(world, cam, alpha, clock);
     ctx.restore();
 
-    // each fresh level fades in from black over its first 0.4s (animClock starts at 0)
-    if (state === 'playing' && clock < 0.4) { ctx.fillStyle = `rgba(0,0,0,${1 - clock / 0.4})`; ctx.fillRect(0, 0, W, H); }
+    if (trans.kind === 'in') {
+      const p = wipeProgress(trans.t, WIPE_IN);            // 0..1 reveal from left
+      if (p < 1) { ctx.fillStyle = '#000'; ctx.fillRect(Math.round(p * W), 0, W, H); }
+      else trans.kind = null;
+    } else if (trans.kind === 'out' && state === 'level-clear') {
+      const p = wipeProgress(trans.t, WIPE_OUT);           // 0..1 cover from left
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, Math.round(p * W), H);
+    }
 
     drawHUD(session, world);
     if (state) drawOverlay(state);                    // paused / level-clear only
