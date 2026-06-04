@@ -7,6 +7,9 @@ body{box-sizing:border-box}
 #game{image-rendering:pixelated;background:#5c94fc;display:block}
 #mute{position:absolute;top:6px;right:6px;font:16px sans-serif;background:#0008;color:#fff;
       border:0;border-radius:6px;padding:6px 10px;cursor:pointer;z-index:60}
+#crt{position:absolute;top:6px;right:46px;font:14px sans-serif;background:#0008;color:#fff;
+     border:0;border-radius:6px;padding:6px 8px;cursor:pointer;z-index:60;opacity:0.6}
+#crt.on{opacity:1}
 
 /* ---- On-screen touch controls ----
    Shown whenever touch is available — main.js adds `body.touch` (more reliable than a
