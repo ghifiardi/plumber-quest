@@ -13,7 +13,11 @@ export function createSupabaseTransport(config) {
 
   async function client() {
     if (supa) return supa;
-    const { createClient } = await import(config.sdkUrl);   // pinned URL (config)
+    // Resolve a relative bundle path against the document base (works on web
+    // subpaths and in the Capacitor app); pass absolute URLs through as-is.
+    const sdk = /^https?:\/\//.test(config.sdkUrl)
+      ? config.sdkUrl : new URL(config.sdkUrl, document.baseURI).href;
+    const { createClient } = await import(sdk);
     supa = createClient(config.supabaseUrl, config.supabasePublishableKey, {
       auth: { persistSession: true, autoRefreshToken: true, storageKey: 'pq.supabase.auth' },
     });

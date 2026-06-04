@@ -10,9 +10,12 @@ export const SOCIAL = {
   supabaseUrl: 'https://incarccrilbeslpympwr.supabase.co',
   supabasePublishableKey: 'sb_publishable_j7xFEURK3h0LQ6chdTZOCg_8VwmvGLY',
 
-  // Exact-pinned supabase-js, dynamically imported only after opt-in.
-  // (Publishable-key format requires a recent SDK; 2.45.x is too old.)
-  sdkUrl: 'https://esm.sh/@supabase/supabase-js@2.107.0',
+  // Self-contained supabase-js bundle (esbuild, pinned 2.107.0), shipped in the
+  // app. Loaded lazily only after opt-in. Local (not a CDN) so online mode needs
+  // no third-party runtime fetch — required for App Store review + works offline.
+  // Rebuild: npx esbuild src/net/_supabase-entry.mjs --bundle --format=esm
+  //   --platform=browser --target=es2020 --outfile=assets/vendor/supabase-js.js
+  sdkUrl: 'assets/vendor/supabase-js.js',
 
   // Single Phase-1 channel.
   room: 'lobby',
