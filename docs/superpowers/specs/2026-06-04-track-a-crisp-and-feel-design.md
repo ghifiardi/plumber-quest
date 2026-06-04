@@ -1,7 +1,7 @@
 # Track A — Crisp & Feel — Design Spec
 
 - **Date:** 2026-06-04
-- **Status:** Design approved (approach A on both forks + full juice package); awaiting spec sign-off.
+- **Status:** Rev 2 — review findings incorporated (sim emitters span multiple files; hit-stop ordered before `consumeIntent`; camera easing is display-time; wipes use renderer-local state; explicit draw order incl. social overlay; letterbox-only). Approved to proceed to the implementation plan.
 - **Author:** Ghifi + Claude (brainstorming session)
 - **Feature branch:** `feat/track-a-crisp-feel`
 
@@ -16,7 +16,7 @@ Two pillars:
 ### Goals
 - Pixel-perfect crispness on phones, tablets, and desktop; zero shimmer in motion.
 - Tangibly better "feel" on the core verbs: jump, land, run, stomp, break, collect.
-- **No art changes**, **no gameplay changes**, **no determinism risk**: the determinism golden master stays green; `world.js` **gameplay logic is unchanged** — its only edit is additive `x,y` fields on existing event payloads (§9), which the fingerprint does not hash.
+- **No art changes**, **no gameplay changes**, **no determinism risk**: the determinism golden master stays green; **gameplay logic is unchanged** — the only simulation edits are additive `x,y` fields on existing event payloads (§9), emitted across `world.js`, `tiles.js`, `pickups.js`, `enemies-resolve.js`, and `projectiles.js`, which the fingerprint does not hash.
 - Mobile-safe: no repeat of the earlier large-backbuffer freeze.
 
 ### Non-goals (out of scope — later tracks)
@@ -24,6 +24,7 @@ Two pillars:
 - New mechanics, enemies, power-ups (Track C).
 - New levels / progression (Track D).
 - DPR-native (1:1 device-pixel) backbuffer rendering — rejected as freeze-risky.
+- A "fill (less crisp)" display toggle — **letterbox-only** in Track A (product call).
 
 ## 2. Locked decisions
 
@@ -120,7 +121,7 @@ Extend `cam.follow(player)`:
 - **Look-ahead:** shift the target x by `facing * LOOKAHEAD` (≈ 28 px), and **ease** the camera x toward the target (lerp factor per frame) instead of snapping.
 - **Vertical ease:** lerp camera y toward the player's y band (so jumps/falls aren't jarring), clamped.
 - **Clamp** to `cam.bounds` exactly as today (the live-bounds behavior is preserved).
-- Deterministic given inputs; no `world` mutation. Easing uses a fixed per-frame factor (frame-rate is fixed 1/60 in the loop).
+- **Display-time / cosmetic — not part of the deterministic sim.** `cam.follow()` is invoked inside `renderer.draw()` (once per *rendered* frame, not per fixed step), so easing uses a fixed factor **per `follow()` call**. It is deterministic for a given *sequence* of `follow()` calls, but intentionally not frame-rate-independent (acceptable for Track A; camera position never feeds gameplay). No `world` mutation.
 
 ## 8. Hit-stop — `src/engine/hitstop.js`
 
@@ -131,18 +132,27 @@ createHitstop()
   step()            // returns true if this frame should SKIP gs.update; decrements
   active()
 ```
-In `main.js`'s `step()`: `if (hitstop.step()) return;` before `gs.update(...)` — the loop keeps rendering the last frame for `frames` ticks. Triggered from the afterFrame event drain: `enemy-stomped` → ~4 frames, `brick-broken` → ~3, `player-hit` → ~6.
+In `main.js`'s `step()`, hit-stop is checked **before `input.consumeIntent()`** so queued input edges (jump/fire) are NOT swallowed during a freeze — they stay pending until the sim resumes:
+```js
+step() {
+  if (hitstop.step()) { effects.tick(1 / 60); return; }  // freeze sim; keep particles alive; DON'T consume intent
+  const intent = input.consumeIntent();
+  gs.update(1 / 60, intent);
+  effects.tick(1 / 60);
+}
+```
+Triggered from the afterFrame event drain: `enemy-stomped` → ~4 frames, `brick-broken` → ~3, `player-hit` → ~6 (subtle).
 
 **Determinism:** the golden master calls `gs.update` directly (not via the loop), so hit-stop cannot affect it. Hit-stop only pauses wall-clock advancement briefly.
 
 ## 9. Event position fields (additive, sim-safe)
 
-Effects need spawn coordinates. The events the sim already emits gain `x,y` (world coords) where missing: `coin-collected`, `enemy-stomped`, `brick-broken`, `powerup-collected`, `jump`, `player-hit`. This is **additive to the event payload only** — no gameplay logic changes, and the determinism fingerprint hashes player/entity/score state (not event payloads), so the golden master is unaffected. Confirmed by re-running the golden test.
+Effects need spawn coordinates. The events the sim already emits gain `x,y` (world coords) where missing: `coin-collected`, `enemy-stomped`, `brick-broken`, `powerup-collected`, `jump`, `player-hit`. **These emitters live in several files** — `world.js`, `tiles.js`, `pickups.js`, `enemies-resolve.js`, `projectiles.js` — and each gains only the coordinate fields. This is **additive to the event payload only** — no gameplay logic changes, and the determinism fingerprint hashes player/entity/score state (not event payloads), so the golden master is unaffected. Confirmed by re-running the golden test.
 
 ## 10. Transitions + CRT/scanline
 
 ### 10.1 Level transition wipe
-Extend the existing per-level black fade-in into a quick **wipe**: on entering `playing`, a 0.3s horizontal reveal (driven by `world.animClock`, already used for the fade); on `level-clear`, a short wipe-out. Drawn in `renderer.draw` (it already owns the fade). Modest, retro.
+Extend the existing per-level fade into quick **wipes**, driven by **renderer-local transition state** — *not* `world.animClock`, which is cumulative and is never reset on `level-clear`. The renderer remembers the last game-state it drew; on a transition *into* `playing` it runs a ~0.3s wipe-in timer, and on a transition *into* `level-clear` a short wipe-out timer (the renderer already keeps display-only state, so this fits). Drawn in `renderer.draw` (it already owns the fade). Modest, retro. (Wipe-in could alternatively key off `world.animClock < 0.3` since each level loads a fresh world with `animClock` at 0, but using renderer-local state for *both* wipes keeps it uniform and correct.)
 
 ### 10.2 CRT / scanline toggle (optional, off by default)
 A final **post-pass** over the 256×240 canvas: faint horizontal scanlines (every other row) + a soft vignette. Toggled by a DOM button (like `#mute`), persisted in `localStorage` (`pq.crt`), **default off**. Implemented in `src/render/crt.js`, applied in `main.js` after all other drawing (so it covers the whole frame). Cheap (drawn at 256×240 before scaling).
@@ -163,7 +173,10 @@ src/main.js         # MODIFY: DPR-aware integer resize; wire effects+hitstop+fx-
 index.html/style.css# MODIFY: add #crt toggle button (like #mute)
 ```
 
-**Invariants preserved:** `world.js` only gains `x,y` on existing event payloads (no logic change). The deterministic sim, the renderer-readonly contract, and the social overlay are all unaffected.
+**Draw order** (per frame, in `main.js`'s render hook), explicit and fixed:
+`renderer.draw*` (world / title / etc.) → `fxOverlay.draw` (particles + impact flash) → `socialOverlay.draw` (counter / callouts / ticker) → optional `crt` post-pass (covers the *whole* frame, including the social overlay).
+
+**Invariants preserved:** the simulation's event emitters (`world.js`, `tiles.js`, `pickups.js`, `enemies-resolve.js`, `projectiles.js`) gain only additive `x,y` on existing event payloads — gameplay logic is unchanged. The deterministic sim, the renderer-readonly contract, and the existing social overlay are all unaffected.
 
 ## 12. Testing
 
@@ -171,7 +184,7 @@ In-browser harness (`tests/`), plus the existing suite stays green:
 - **resize math** (`tests/display.test.js`): given (vw, vh, dpr, band), the chosen scale is the largest integer fitting in device px; CSS size = `logical*scale/dpr`; backbuffer stays 256×240.
 - **effects** (`tests/effects.test.js`): each event kind spawns the expected particle count; `tick` ages + removes expired; pool capped at `max` (drop oldest); injected rng makes it deterministic.
 - **hitstop** (`tests/hitstop.test.js`): `trigger(n)` → `step()` returns true exactly `n` times then false; `active()` reflects state.
-- **camera** (extend `tests/` camera test): look-ahead offsets toward `facing`; eases (doesn't snap); still clamps to bounds.
+- **camera** (extend `tests/` camera test): over a fixed *sequence* of `follow()` calls, look-ahead offsets toward `facing`, eases toward target (doesn't snap), and still clamps to bounds. (Display-time easing, asserted per `follow()` call — not fixed-step.)
 - **determinism**: the golden master test stays green (proves §6–§9 didn't perturb the sim).
 - All current tests remain green.
 
