@@ -33,6 +33,16 @@
   await import('./transport.test.js');
   await import('./social.test.js');
   await import('./social-overlay.test.js');
-  await runAll(document.getElementById('out'));
+  const out = document.getElementById('out');
+  await runAll(out);
+  // Headless runner hook: when loaded with ?post=1, POST the summary text to the
+  // shot server so a CLI/subagent can read it (this Chrome's new-headless mode
+  // does not support --dump-dom). No effect on normal browser runs.
+  if (location.search.includes('post')) {
+    try {
+      await fetch('/shot?name=testresult.txt', { method: 'POST', headers: { 'Content-Type': 'text/plain' },
+        body: btoa(unescape(encodeURIComponent(out.textContent))) });
+    } catch (e) {}
+  }
 </script>
 </body></html>

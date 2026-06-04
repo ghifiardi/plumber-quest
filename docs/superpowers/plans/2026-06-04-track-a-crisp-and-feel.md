@@ -16,17 +16,21 @@
 
 Tests are ES modules using `tests/harness.js`, registered in `tests/index.html`, executed in a browser via `runAll()` which writes `PASS n / FAIL m` plus one ✅/❌ line per test into `#out`.
 
-1. Serve the repo root on port 8011 (the project already runs one during dev; otherwise `python3 -m http.server 8011` from the project root).
-2. **Headless run (preferred):**
-   ```bash
-   CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-   "$CHROME" --headless --disable-gpu --no-sandbox --user-data-dir="$(mktemp -d)" \
-     --virtual-time-budget=8000 --dump-dom "http://localhost:8011/tests/index.html" 2>/dev/null \
-     | grep -oE "PASS [0-9]+ / FAIL [0-9]+|❌ [^<]+"
-   ```
-   - **Expected FAIL (red step):** prints a `❌ …` line and `FAIL ≥ 1`.
-   - **Expected PASS (green step):** prints `PASS <n> / FAIL 0` and no `❌`.
-3. Or open `http://localhost:8011/tests/index.html` in a real browser and read the summary line.
+**Canonical runner (headless, one command):**
+```bash
+bash tools/run-tests.sh
+```
+It loads `tests/index.html?post=1` in headless Chrome; the harness POSTs its
+summary to the shot server on `:8011`, and the script prints `PASS n / FAIL m`
+plus any `❌` lines. (This Chrome's new-headless mode does not support
+`--dump-dom`, hence the self-POST approach — the same pattern the recorder uses.)
+- **Expected FAIL (red step):** a `❌ …` line and `FAIL ≥ 1`.
+- **Expected PASS (green step):** `PASS <n> / FAIL 0`, no `❌`.
+
+**Prereq:** the shot server must be running on `:8011` (serving the repo root and
+accepting `POST /shot`). It is already running in this environment; if it drops,
+restart with `python3 /tmp/shotsrv.py &`. You can also just open
+`http://localhost:8011/tests/index.html` in a real browser and read `#out`.
 
 The current baseline is **117 / 0**. Each task keeps the suite green (except its own red→green TDD step).
 
