@@ -6,7 +6,7 @@ const SHELL_KILL_SCORE = 200;
 function killEnemy(w, e, x, y, score) {
   if (e.type === 'goomba' && e.stomp) e.stomp(w);   // squash + remove via its own timer
   else { e.alive = false; w.remove(e); }            // walking koopa knocked out by a shell
-  w.addScore(score); w.popup(score, x, y); w.emit({ type: 'enemy-stomped' });
+  w.addScore(score); w.popup(score, x, y); w.emit({ type: 'enemy-stomped', x, y });
 }
 
 // Resolves: (1) sliding shells knocking out other enemies, then (2) player vs enemies.
@@ -40,10 +40,10 @@ export function resolveEnemies(w) {
       if (e.mode === 'walk') {
         if (cameFromAbove) {
           e.toShell(); p.vy = -240; w.addScore(STOMP_SCORE);
-          w.popup(STOMP_SCORE, e.x, e.y); w.addShake(3); w.emit({ type: 'enemy-stomped' });
+          w.popup(STOMP_SCORE, e.x, e.y); w.addShake(3); w.emit({ type: 'enemy-stomped', x: e.x, y: e.y });
         } else { damagePlayer(w); if (w.playerDied) break; }
       } else if (e.mode === 'shell') {              // idle shell: any touch kicks it away
-        e.kick(p.x); w.emit({ type: 'enemy-stomped' });
+        e.kick(p.x); w.emit({ type: 'enemy-stomped', x: e.x, y: e.y });
         if (cameFromAbove) p.vy = -240;
       } else {                                      // sliding shell
         if (cameFromAbove) { e.toShell(); p.vy = -240; }   // stomp to stop it
@@ -57,7 +57,7 @@ export function resolveEnemies(w) {
 export function damagePlayer(w) {
   const p = w.player;
   if (p.invuln > 0) return;
-  if (p.power === 'fire') { p.power = 'big'; p.invuln = 1.2; w.emit({ type: 'player-hit' }); w.addShake(3); }
-  else if (p.power === 'big') { p.power = 'small'; p.invuln = 1.2; w.emit({ type: 'player-hit' }); w.addShake(3); }
+  if (p.power === 'fire') { p.power = 'big'; p.invuln = 1.2; w.emit({ type: 'player-hit', x: p.x + p.w / 2, y: p.y + p.h / 2 }); w.addShake(3); }
+  else if (p.power === 'big') { p.power = 'small'; p.invuln = 1.2; w.emit({ type: 'player-hit', x: p.x + p.w / 2, y: p.y + p.h / 2 }); w.addShake(3); }
   else { w.playerDied = true; w.emit({ type: 'player-died' }); w.addShake(5); }
 }

@@ -135,7 +135,7 @@ export function createWorld(level, { time = LEVEL_TIME, session = null } = {}) {
 
     // === stage 1: tiles (player vs tilemap) ===
     controlPlayer(w.player, intent, dt);
-    if (w.player.jumped) { w.player.jumped = false; w.emit({ type: 'jump' }); }  // real jump (incl. coyote/buffer)
+    if (w.player.jumped) { w.player.jumped = false; w.emit({ type: 'jump', x: w.player.x + w.player.w / 2, y: w.player.y + w.player.h }); }  // real jump (incl. coyote/buffer)
     tryFire(w, intent);                                  // spawn fireball on firePressed (Task 10)
     const facts = resolveAgainstTiles(w.player, solid, 16, dt);
     w.player.onGround = facts.landedOnTop;

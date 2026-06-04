@@ -32,7 +32,7 @@ export function spawnGoomba(x, y, speed = GOOMBA_SPEED) {
       if (this.squashT > 0) { this.squashT -= dt; if (this.squashT <= 0) world.remove(this); return; }
       patrol(this, world, dt, true);
     },
-    stomp(world) { this.alive = false; this.vx = 0; this.squashT = 0.25; world.emit({ type:'enemy-stomped' }); },
+    stomp(world) { this.alive = false; this.vx = 0; this.squashT = 0.25; world.emit({ type:'enemy-stomped', x: this.x, y: this.y }); },
   };
 }
 

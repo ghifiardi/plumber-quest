@@ -44,7 +44,7 @@ export function resolveProjectiles(w) {
       if (hittable && overlap(fb, e)) {
         if (e.stomp) e.stomp(w); else { e.alive = false; w.remove(e); }
         w.addScore(STOMP_SCORE); w.popup(STOMP_SCORE, e.x, e.y); w.addShake(2);
-        w.emit({ type: 'enemy-stomped' }); fb._expire(w);
+        w.emit({ type: 'enemy-stomped', x: e.x, y: e.y }); fb._expire(w);
         break;
       }
     }

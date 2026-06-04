@@ -35,7 +35,7 @@ export function resolvePickups(w) {
     if (w.tiles[r][c].tile === 'coin') {
       w.tiles[r][c] = { tile: 'empty' };
       w.addCoin();
-      w.emit({ type: 'coin-collected' });
+      w.emit({ type: 'coin-collected', x: c * 16 + 8, y: r * 16 + 8 });
       w.popup('200', c * 16, r * 16);
     }
   }
@@ -46,13 +46,13 @@ export function resolvePickups(w) {
     if (it.type !== 'mushroom' && it.type !== 'flower' && it.type !== 'coin-pickup') continue;
     if (!overlap(p, it)) continue;
     if (it.type === 'coin-pickup') {
-      w.addCoin(); w.emit({ type:'coin-collected' }); w.popup('200', it.x, it.y);
+      w.addCoin(); w.emit({ type:'coin-collected', x: it.x, y: it.y }); w.popup('200', it.x, it.y);
     } else if (it.type === 'mushroom') {
       if (p.power === 'small') p.power = 'big';
-      w.addScore(POWERUP_SCORE); w.emit({ type:'powerup-collected', kind:'mushroom' }); w.popup('1000', it.x, it.y);
+      w.addScore(POWERUP_SCORE); w.emit({ type:'powerup-collected', kind:'mushroom', x: it.x, y: it.y }); w.popup('1000', it.x, it.y);
     } else { // flower
       p.power = (p.power === 'small') ? 'big' : 'fire';
-      w.addScore(POWERUP_SCORE); w.emit({ type:'powerup-collected', kind:'flower' }); w.popup('1000', it.x, it.y);
+      w.addScore(POWERUP_SCORE); w.emit({ type:'powerup-collected', kind:'flower', x: it.x, y: it.y }); w.popup('1000', it.x, it.y);
     }
     it.alive = false; w.remove(it);
   }
