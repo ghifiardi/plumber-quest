@@ -19,6 +19,10 @@ import { SOCIAL } from './net/config.js';
 import { createSocial } from './net/social.js';
 import { createNoopTransport } from './net/noop-transport.js';
 import { createSocialOverlay } from './ui/social-overlay.js';
+import { createEffects } from './fx/effects.js';
+import { createFxOverlay } from './fx/fx-overlay.js';
+import { createHitstop } from './engine/hitstop.js';
+import { createCrt } from './render/crt.js';
 import * as handles from './net/handles.js';
 import { installationId, resetIdentity } from './net/identity.js';
 import { CALLOUTS } from './net/schema.js';
@@ -33,6 +37,10 @@ const audio = createAudio({ musicUrl: 'assets/theme.mp3' });   // original Suno 
 const identity = { installationId, resetIdentity };
 let social = createSocial({ config: SOCIAL, transport: createNoopTransport(), identity, handles });
 const socialOverlay = createSocialOverlay(canvas.getContext('2d'));
+const effects = createEffects();
+const fxOverlay = createFxOverlay(canvas.getContext('2d'));
+const hitstop = createHitstop();
+const crt = createCrt(canvas.getContext('2d'));
 const ONLINE_KEY = 'pq.online', NOTICE_KEY = 'pq.online.noticed';
 
 async function buildSupabaseSocial() {
@@ -124,6 +132,10 @@ resize();
 // mute toggle works before audio init
 const muteBtn = document.getElementById('mute');
 muteBtn.addEventListener('click', () => { audio.setMuted(!audio.isMuted()); muteBtn.textContent = audio.isMuted() ? '🔇' : '🔊'; });
+
+const crtBtn = document.getElementById('crt');
+crtBtn.classList.toggle('on', crt.isOn());
+crtBtn.addEventListener('click', () => { crtBtn.classList.toggle('on', crt.toggle()); });
 
 // --- social DOM controls ---
 const $ = (id) => document.getElementById(id);
@@ -234,20 +246,35 @@ for (const btn of document.querySelectorAll('#touch-controls .tc-btn')) {
 }
 
 let prevState = gs.state;
+let prevFacing = 1;
 const loop = createLoop({
   beforeFrame() { input.beginFrame(); },           // open input frame BEFORE any fixed steps
   step() {
-    const intent = input.consumeIntent();          // edge delivered to first step this frame
-    gs.update(1/60, intent);                       // gates by state internally (paused = no-op)
-    if (gs.world) cam.bounds = gs.world.bounds;     // live bounds for camera follow
-  },                                                // jump SFX now flows via the 'jump' event
+    if (hitstop.step()) { effects.tick(1 / 60); return; }   // freeze sim; keep particles alive; keep intent pending
+    const intent = input.consumeIntent();
+    gs.update(1 / 60, intent);
+    if (gs.world) cam.bounds = gs.world.bounds;
+    effects.tick(1 / 60);
+  },
   afterFrame() {                                   // once per frame, after ALL steps
+    if (gs.state !== prevState && (gs.state === STATES.intro || gs.state === STATES.title)) effects.clear();
     if (gs.world) for (const ev of gs.world.drainEvents()) {
       if (ev.type === 'flag-reached') { audio.stopMusic(); audio.fanfare(); }   // duck music for the fanfare
       else audio.playEvent(ev.type);
       haptic(EVENT_HAPTIC[ev.type]);
       if (ev.type === 'flag-reached') social.publishMilestone('level-clear', gs.session.levelIndex + 1);
       else if (ev.type === 'one-up') social.publishMilestone('one-up');
+      effects.handle(ev);
+      if (ev.type === 'enemy-stomped') hitstop.trigger(4);
+      else if (ev.type === 'brick-broken') hitstop.trigger(3);
+      else if (ev.type === 'player-hit') hitstop.trigger(6);
+    }
+    if (gs.world && gs.state === STATES.playing) {
+      const pl = gs.world.player;
+      if (pl.onGround && Math.abs(pl.vx) > 60 && pl.facing !== prevFacing) {
+        effects.spawn('dust', pl.x + pl.w / 2, pl.y + pl.h);   // skid kick
+      }
+      prevFacing = pl.facing;
     }
     if (gs.state !== prevState) {
       if ([STATES.title, STATES.difficultySelect, STATES.intro, STATES.dying, STATES.gameOver, STATES.win].includes(gs.state)) audio.stopMusic();
@@ -264,7 +291,10 @@ const loop = createLoop({
     else if (st === STATES.win) renderer.drawWin(gs.session);
     else if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session, st);  // playing/paused/dying/level-clear
     else renderer.drawTitle();
+    if (st !== STATES.title && st !== STATES.difficultySelect && st !== STATES.gameOver && st !== STATES.win && st !== STATES.intro)
+      fxOverlay.draw(effects.list(), cam, effects.flash());   // particles over the world only
     socialOverlay.draw(social.getState(), (typeof performance !== 'undefined' ? performance.now() : 0), st);
+    crt.draw();                                                // final post-pass over everything
   },
 });
 loop.start();
