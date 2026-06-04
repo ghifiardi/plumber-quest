@@ -11,6 +11,20 @@ const SPRITE_FOR = {
 // (title/intro/game-over/win) are drawn by their own functions.
 const OVERLAY_TEXT = { 'paused': 'PAUSED', 'level-clear': 'LEVEL CLEAR!' };
 
+// Pure cosmetic squash/stretch from read-only player state + a landing impulse
+// (landT in 0..1, decays in the renderer). Volume-ish: sx*sy ≈ 1.
+export function heroSquash(p, landT) {
+  if (landT > 0) {                          // landing squash dominates
+    const k = 0.18 * landT;
+    return { sx: 1 + k, sy: 1 - k };
+  }
+  if (!p.onGround && p.vy < -80) {          // rising fast => stretch
+    const k = Math.min(0.12, (-p.vy - 80) / 1600 + 0.04);
+    return { sx: 1 - k, sy: 1 + k };
+  }
+  return { sx: 1, sy: 1 };
+}
+
 export function createRenderer(canvas) {
   // Render at the native 256x240 backbuffer (CSS scales the element to fill the screen).
   // A large pixelated backbuffer upscaled by CSS can stop recompositing on some mobile
@@ -37,6 +51,7 @@ export function createRenderer(canvas) {
   const coinFrame = (c) => Math.floor(c * 8) % 4;
   const shimmerFrame = (c) => Math.floor(c * 3) % 3;
   const goombaFrame = (c) => Math.floor(c * 6) % 2;
+  const heroAnim = { prevOnGround: true, landT: 0 };
 
   function blit(src, dx, dy, dw, dh, flip) {
     if (flip) { ctx.save(); ctx.translate(dx + dw, dy); ctx.scale(-1, 1); ctx.drawImage(src, 0, 0, dw, dh); ctx.restore(); }
@@ -111,12 +126,20 @@ export function createRenderer(canvas) {
     }
 
     const pl = world.player;
+    // landing detection (display-only): onGround false->true starts a squash impulse
+    if (pl.onGround && !heroAnim.prevOnGround) heroAnim.landT = 1;
+    heroAnim.prevOnGround = pl.onGround;
+    heroAnim.landT = Math.max(0, heroAnim.landT - 0.16);   // ~6 frames decay
     if (!(pl.invuln > 0 && Math.floor(pl.invuln * 20) % 2)) {
       const tier = (pl.power === 'small' || pl.power === 'big' || pl.power === 'fire') ? pl.power : 'big';
       const img = sprites.hero[tier][heroPose(pl, clock)];
       const sz = sprites.heroSize[tier];
       const pp = interp(pl, alpha);
-      blit(img, Math.round(pp.x + pl.w/2 - sz.w/2 - cam.x), Math.round(pp.y + pl.h - sz.h), sz.w, sz.h, pl.facing < 0);
+      const { sx, sy } = heroSquash(pl, heroAnim.landT);
+      const dw = sz.w * sx, dh = sz.h * sy;
+      const dx = Math.round(pp.x + pl.w / 2 - dw / 2 - cam.x);
+      const dy = Math.round(pp.y + pl.h - dh);             // keep feet planted
+      blit(img, dx, dy, dw, dh, pl.facing < 0);
     }
 
     drawPopups(world, cam);
