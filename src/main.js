@@ -1,5 +1,6 @@
 import { createLoop } from './engine/loop.js';
 import { createInput } from './engine/input.js';
+import { computeDisplay } from './engine/display.js';
 import { createCamera } from './engine/camera.js';
 import { createAudio } from './engine/audio.js';
 import { createGameState, STATES } from './game/game-state.js';
@@ -110,12 +111,11 @@ const isTouch = (typeof matchMedia === 'function' && matchMedia('(pointer: coars
 if (isTouch) document.body.classList.add('touch');   // reveal the on-screen controls
 function resize() {
   const vw = window.innerWidth || LOGICAL_W, vh = window.innerHeight || LOGICAL_H;
-  const band = isTouch ? Math.min(170, Math.round(vh * 0.26)) : 0;   // reserve bottom band for controls
-  document.body.style.paddingBottom = band + 'px';                   // centers canvas above the band
-  const availH = Math.max(1, vh - band);
-  const scale = Math.max(0.1, Math.min(vw / LOGICAL_W, availH / LOGICAL_H));   // fill (fractional ok)
-  canvas.style.width = Math.round(LOGICAL_W * scale) + 'px';
-  canvas.style.height = Math.round(LOGICAL_H * scale) + 'px';
+  const { cssW, cssH, band } = computeDisplay(vw, vh, window.devicePixelRatio || 1, isTouch, LOGICAL_W, LOGICAL_H);
+  document.body.style.paddingBottom = band + 'px';   // centers canvas above the control band
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  // NOTE: canvas.width/height (the backbuffer) intentionally stays 256x240 — never resized.
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
