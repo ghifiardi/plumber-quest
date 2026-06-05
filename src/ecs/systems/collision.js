@@ -51,4 +51,23 @@ export function collisionSystem(world, dt) {
       }
     }
   }
+
+  // springs: impulse on top-contact crossing (prev->current bottom), not a support state
+  for (const e of world.entities) {
+    const { body: b, transform: t } = e.c;
+    if (!b) continue;
+    for (const p of world.entities) {
+      const bnc = p.c.bouncer; if (!bnc || !bnc.solid) continue;
+      const pt = p.c.transform;
+      const horizontallyOver = t.x + t.w > pt.x && t.x < pt.x + pt.w;
+      const prevBottom = t.prevY + t.h, curBottom = t.y + t.h;
+      const crossed = prevBottom <= pt.y + 6 && curBottom >= pt.y && b.vy > 0;
+      if (horizontallyOver && crossed) {
+        t.y = pt.y - t.h;
+        b.vy = -bnc.bounceV; b.onGround = false; b.support = null;   // launch; not grounded
+        world.emit({ type: 'spring-bounce', x: t.x + t.w / 2, y: pt.y });
+        break;
+      }
+    }
+  }
 }

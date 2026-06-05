@@ -59,3 +59,27 @@ test('conveyor pushes a standing rider horizontally, clamped', () => {
   assert(pl.c.transform.x > x0 + 2, 'belt pushed the rider');
   assert(Math.abs(pl.c.body.vx) <= pl.c.control.maxVx + 1e-6, 'vx never exceeds the rider cap');
 });
+
+test('spring launches the player up, no support/onGround, emits spring-bounce', () => {
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'sp', w: 12, h: 8 },
+    tiles: [eRow(12),eRow(12),eRow(12),eRow(12),eRow(12),eRow(12),eRow(12), gRow(12)],
+    entities: [
+      { type: 'player', x: 48, y: 16 },
+      { type: 'spring', x: 40, y: 96, bouncer: { bounceV: 320 } },
+    ],
+  });
+  const pl = w.entities.find(e => e.type === 'player');
+  let bounced = false;
+  for (let i = 0; i < 60; i++) {
+    const evs = stepWorld(w, 1/60, NONE);
+    if (evs.some(e => e.type === 'spring-bounce')) {
+      bounced = true;
+      assert(pl.c.body.vy < 0, 'moving upward right after the bounce');
+      assert(pl.c.body.support === null, 'no support recorded on a spring');
+      assert(pl.c.body.onGround === false, 'not grounded on the bounce frame');
+      break;
+    }
+  }
+  assert(bounced, 'spring-bounce fired');
+});
