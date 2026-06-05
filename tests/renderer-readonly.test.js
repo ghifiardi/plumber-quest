@@ -5,6 +5,7 @@ import { createRenderer } from '../src/render/renderer.js';
 import { createCamera } from '../src/engine/camera.js';
 import { spawnGoomba } from '../src/game/enemies.js';
 import { makeMushroom } from '../src/game/pickups.js';
+import { definitionToWorld } from '../src/ecs/loader.js';
 
 const LVL = parseLevel(['P--o-F', 'XXXXXX'], { tile: 16 });
 
@@ -50,4 +51,50 @@ test('reassigning cam.bounds affects clamping (live bounds, not captured)', () =
   cam.bounds = { left:0, top:0, right:2000, bottom:240 };
   for (let i=0;i<120;i++) cam.follow({ x:1000, y:0, w:12, h:16, facing:1 });
   assert(cam.x > 100, 'new wider bounds allow scrolling further');
+});
+
+// --- ECS view rendering (additive, Task 11) ---
+
+const ECS_NONE = { right:false,left:false,run:false,jumpHeld:false,jumpPressed:false,jumpReleased:false,firePressed:false };
+
+function ecsView() {
+  const emptyRow = (w) => Array.from({ length: w }, () => ({ tile: 'empty' }));
+  const groundRow = (w) => Array.from({ length: w }, () => ({ tile: 'ground' }));
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'r', w: 16, h: 4 },
+    tiles: [emptyRow(16), emptyRow(16), emptyRow(16), groundRow(16)],
+    entities: [
+      { type: 'player', x: 16, y: 0 },
+      { type: 'platform', x: 64, y: 40, mover: { axis: 'x', dist: 16, speed: 10 } },
+    ],
+  });
+  for (let i = 0; i < 10; i++) w.update(1/60, ECS_NONE);
+  return w.getRenderView();
+}
+
+// Build a real renderer + camera + a drawImage spy on the SAME ctx the renderer uses.
+function rendererWithSpy() {
+  const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 240;
+  const ctx = canvas.getContext('2d');                 // same instance the renderer grabs
+  let count = 0;
+  const orig = ctx.drawImage;
+  ctx.drawImage = function (...args) { count++; return orig.apply(this, args); };
+  const renderer = createRenderer(canvas);
+  const cam = createCamera({ viewW: 256, viewH: 240, bounds: { left:0, top:0, right:99999, bottom:240 } });
+  return { renderer, cam, drawCount: () => count };
+}
+
+test('renderer draws a finish-less ECS view without throwing (flagpole guard)', () => {
+  const { renderer, cam } = rendererWithSpy();
+  let threw = false;
+  try { renderer.draw(ecsView(), cam, 0, { score:0, coins:0, lives:3, levelIndex:0 }, 'playing'); }
+  catch (e) { threw = true; }
+  assert(!threw, 'finish-less view must not throw');
+});
+
+test('renderer issues draw calls for a platform entity', () => {
+  const { renderer, cam, drawCount } = rendererWithSpy();
+  const before = drawCount();
+  renderer.draw(ecsView(), cam, 0, { score:0, coins:0, lives:3, levelIndex:0 }, 'playing');
+  assert(drawCount() > before, 'platform/tiles produced draw calls');
 });
