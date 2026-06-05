@@ -45,6 +45,10 @@ export function setEntityProp(m, i, path, value) {
 }
 
 export function resize(m, w, h) {
+  // defensive clamp: dims must be finite integers >= 1 (a forced bad input from the
+  // editor must never throw via Array.from); fall back to current dims on garbage.
+  w = Math.max(1, Math.floor(Number(w) || m.meta.w));
+  h = Math.max(1, Math.floor(Number(h) || m.meta.h));
   const tiles = Array.from({ length: h }, (_, r) =>
     Array.from({ length: w }, (_, c) => (m.tiles[r] && m.tiles[r][c]) || 'empty'));
   m.tiles = tiles; m.meta.w = w; m.meta.h = h;

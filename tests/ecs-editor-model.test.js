@@ -86,3 +86,14 @@ test('editableComponentsForType lists schema-editable components per type', () =
   assertEqual(editableComponentsForType('checkpoint').join(','), 'transform,trigger');
   assertEqual(editableComponentsForType('player').join(','), 'transform');
 });
+
+test('resize clamps invalid dimensions instead of throwing', () => {
+  const m = blankModel(8, 4);
+  resize(m, -5, 0);                         // negative width, zero height
+  assertEqual(m.tiles.length, m.meta.h, 'rows == h after clamp');
+  for (const row of m.tiles) assertEqual(row.length, m.meta.w, 'cols == w after clamp');
+  assert(m.meta.w >= 1 && m.meta.h >= 1, 'dims clamped to >= 1');
+  resize(m, NaN, 3);                        // NaN width falls back; height 3
+  assertEqual(m.meta.h, 3);
+  for (const row of m.tiles) assertEqual(row.length, m.meta.w, 'still rectangular');
+});
