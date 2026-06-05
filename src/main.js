@@ -26,6 +26,7 @@ import * as handles from './net/handles.js';
 import { installationId, resetIdentity } from './net/identity.js';
 import { CALLOUTS } from './net/schema.js';
 
+function startGame() {
 const ECS_DEMO = new URLSearchParams(location.search).get('ecsdemo');
 const LEVELS = ECS_DEMO === '2' ? [DEMO2]
   : ECS_DEMO ? [DEMO1]
@@ -289,3 +290,11 @@ const loop = createLoop({
   },
 });
 loop.start();
+}
+
+// Dev-only level editor (hidden from players). Gated BEFORE any game side effect runs.
+if (new URLSearchParams(location.search).has('editor')) {
+  import('./editor/editor.js').then(m => m.boot());
+} else {
+  startGame();
+}
