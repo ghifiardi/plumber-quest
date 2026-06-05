@@ -1,0 +1,39 @@
+// src/ecs/systems/collision.js
+// Integrates body entities against the solid tilemap (resolveAgainstTiles does both axes),
+// then rests entities on top of solid movers (sets body.standingOn for next-tick carry).
+import { resolveAgainstTiles, overlap } from '../../engine/aabb.js';
+import { makeSolid } from '../../engine/tile-collision.js';
+import { TILE } from '../../engine/constants.js';
+
+export function collisionSystem(world, dt) {
+  const solid = world._solid || (world._solid = makeSolid(world.tiles));
+
+  for (const e of world.entities) {
+    const { body: b, transform: t } = e.c;
+    if (!b) continue;
+    const box = { x: t.x, y: t.y, w: t.w, h: t.h, vx: b.vx, vy: b.vy };
+    const facts = resolveAgainstTiles(box, solid, TILE, dt);
+    t.x = box.x; t.y = box.y; b.vx = box.vx; b.vy = box.vy;
+    if (facts.landedOnTop) b.onGround = true;
+  }
+
+  // rest body-entities on top of solid movers (platforms)
+  for (const e of world.entities) {
+    const { body: b, transform: t } = e.c;
+    if (!b) continue;
+    for (const p of world.entities) {
+      const m = p.c.mover; if (!m || !m.solid) continue;
+      const pt = p.c.transform;
+      const feet = { x: t.x, y: t.y, w: t.w, h: t.h };
+      const top  = { x: pt.x, y: pt.y - 1, w: pt.w, h: 2 };   // thin band at platform top
+      const horizontallyOver = t.x + t.w > pt.x && t.x < pt.x + pt.w;
+      const fallingOnto = b.vy >= 0 && (t.y + t.h) >= pt.y - 1 && (t.y + t.h) <= pt.y + 6;
+      if (horizontallyOver && fallingOnto) {
+        t.y = pt.y - t.h; b.vy = 0; b.onGround = true; b.standingOn = p.id;
+      } else if (overlap(feet, top)) {
+        // touching but not falling: still counts as support
+        b.onGround = true; b.standingOn = p.id;
+      }
+    }
+  }
+}

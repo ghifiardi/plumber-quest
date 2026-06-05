@@ -1,5 +1,6 @@
 // src/ecs/world-ecs.js  (minimal; step() + facade methods added in a later task)
 import { TILE } from '../engine/constants.js';
+import { SYSTEM_ORDER } from './systems/index.js';
 
 export class EcsWorld {
   constructor({ tiles, meta }) {
@@ -20,4 +21,16 @@ export class EcsWorld {
   nextId() { return this._nextId++; }
   emit(ev) { this.events.push(ev); }
   drainEvents() { const e = this.events; this.events = []; return e; }
+}
+
+// Advance the world one fixed tick. Returns the events emitted THIS tick (for tests).
+// Snapshots prevX/prevY first (renderer interpolation), runs systems in order.
+export function stepWorld(world, dt, intent) {
+  world.animClock += dt;                  // single animation clock (renderer reads via the view)
+  for (const e of world.entities) {
+    const t = e.c.transform; if (t) { t.prevX = t.x; t.prevY = t.y; }
+  }
+  const before = world.events.length;
+  for (const [, fn] of SYSTEM_ORDER) fn(world, dt, intent);
+  return world.events.slice(before);
 }
