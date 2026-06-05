@@ -16,7 +16,7 @@
 
 ## 2. Architecture
 
-The ECS is a second sim path behind a **facade** so `main.js` never branches on sim type.
+The ECS is a second sim path behind a **facade** so neither `main.js` **nor `game-state.js`** branches on sim type — both talk only to the facade contract (§2.1). Moving the branch out of `main.js` is not enough on its own; `game-state.js` is the other classic-coupled consumer and is migrated to the facade in the same cycle.
 
 ```
 src/sim/
@@ -56,6 +56,8 @@ sim.update(dt, input)      // advance one fixed 1/60 tick
 sim.drainEvents()          // return the accumulated event list AND clear the queue
                            //   (matches classic world: `const e = events; events = []; return e`)
 sim.getStatus()            // → { timeUp, fell, playerDied, levelClear }  (lifecycle signals)
+sim.beginScripted(state)   // begin a scripted death/clear animation (state = 'dying' | 'levelClear')
+sim.updateScripted(dt)     // advance the scripted animation one frame
 sim.getCameraTarget()      // → { x, y, w, h, facing? }  (dims + facing for look-ahead)
 sim.getBounds()            // → { left, top, right, bottom }  (camera clamp bounds — the shape
                            //   createCamera()/clampX expect; NOT {w,h})
@@ -64,7 +66,13 @@ sim.getRenderView()        // → immutable-by-convention view model the rendere
 
 `getRenderView()` is read-only **by convention**; the renderer-readonly test is the enforcing guard — we don't deep-freeze or overbuild immutability unless a test catches mutation.
 
-**Lifecycle / game-state coupling (resolved).** `createGameState()` currently branches on classic fields directly — `world.playerDied || world.fell || world.timeUp` → `dying`, `world.flagReached` → `levelClear` (game-state.js:76-77). This cycle **`game-state.js` is updated to read those signals through `sim.getStatus()` instead of poking `world.*`**, so it works against either sim path. The classic adapter derives `getStatus()` from the existing `world` fields (read-only — no change to `src/game/*`); `EcsWorld` derives them from its own state (player death/fall/out-of-bounds; `levelClear` from a `finish` trigger, which is a no-op stub until the mechanics cycle, so `demo-1` simply never reports `levelClear`). The scripted dying/levelClear **animations** stay owned by `game-state.js` (`_scriptT`) — no `beginScripted`/`updateScripted` facade methods are needed.
+**Lifecycle / game-state coupling (resolved).** `createGameState()` currently reaches into classic-world shape three ways: it branches on `world.playerDied || world.fell || world.timeUp` → `dying` and `world.flagReached` → `levelClear` (game-state.js:76-77), **and** it drives scripted animations via `world.beginDeathAnim()` / `world.beginClearAnim()` / `world.updateScripted(dt)` (game-state.js:46,48,82), whose animation data lives in `world.js:73-86`.
+
+This cycle **`game-state.js` is updated to talk to the sim *facade* for all of it** — not just `main.js`. Otherwise the classic-vs-ECS branch merely moves down one layer into game-state.
+
+- **Status:** game-state reads `sim.getStatus()` instead of `world.playerDied/fell/timeUp/flagReached`. The classic adapter derives it from the existing `world` fields (read-only — no change to `src/game/*`); `EcsWorld` derives it from its own state (player death/fall/out-of-bounds). `levelClear` comes from a `finish` trigger, a no-op stub until the mechanics cycle, so `demo-1` never reports `levelClear`.
+- **Scripted animation:** game-state's `enterScripted()` calls `sim.beginScripted(state)` and the dying/levelClear tick calls `sim.updateScripted(dt)`. The **classic adapter delegates** these to `world.beginDeathAnim`/`beginClearAnim`/`updateScripted` (classic behavior byte-for-byte intact). **ECS no-ops** them this cycle (no scripted death/clear art yet); ECS cosmetic clocks can fill them in later. game-state keeps ownership of the scripted *timer* (`_scriptT`, `scriptTimes`) and state transitions — only the per-sim animation hooks move behind the facade.
+- The level-clear timer-drain (`gs._clearStart = world.timeRemaining` → `world.timeRemaining = …`, game-state.js:49,96) is classic-only and only runs in the `levelClear` state, which ECS never enters this cycle, so it needs no facade method now. It is flagged for the mechanics cycle when ECS gains a finish.
 
 ## 3. Entity & component model
 
@@ -159,7 +167,7 @@ export default {
   tiles: [ /* h rows × w cols of tile IDs (solid layer) */ ],
   entities: [
     { type: 'player',   x: 32, y: 96 },
-    { type: 'platform', x: 80, y: 120, move: { axis: 'x', dist: 48, speed: 0.5 } },
+    { type: 'platform', x: 80, y: 120, mover: { axis: 'x', dist: 48, speed: 0.5 } },
   ],
 }
 ```
@@ -211,7 +219,7 @@ Both renderer edits are additive and covered by the renderer-readonly test (they
 - **Renderer-readonly test** extended to the ECS render view: `ecsWorldToRenderView` + a draw must mutate nothing.
 - **Loader validation tests:** unknown type, unknown component key, 0/2 players, non-rectangular tiles, missing meta fields → each throws with a clear message; the `editor`/`meta` bags are accepted.
 - **Carry test:** a player standing on an x-axis platform moves with it exactly one platform-delta per tick, no drift/double-move.
-- **Facade-parity tests:** `getBounds()` returns `{left,top,right,bottom}` and feeds `createCamera` without error; `getStatus()` returns `{timeUp,fell,playerDied,levelClear}` from both adapters; `game-state.js` drives `dying`/`levelClear` transitions off `getStatus()` for a forced ECS player-death and (classic) flag-reach.
+- **Facade-parity tests:** `getBounds()` returns `{left,top,right,bottom}` and feeds `createCamera` without error; `getStatus()` returns `{timeUp,fell,playerDied,levelClear}` from both adapters; `game-state.js` drives `dying`/`levelClear` transitions off `getStatus()` for a forced ECS player-death and (classic) flag-reach; `beginScripted`/`updateScripted` on the classic adapter delegate to `world.beginDeathAnim`/`beginClearAnim`/`updateScripted` (spied), and are safe no-ops on `EcsWorld`.
 - **Renderer-gap tests:** drawing a finish-less ECS view does not throw (flagpole guard); a `platform` entity produces visible pixels (platform draw support).
 - **Classic regression:** the existing **138/0** suite — including the classic golden-master fingerprint — stays green, proving Coexist.
 
