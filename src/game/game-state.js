@@ -52,8 +52,10 @@ export function createGameState({ worldFactory, levelCount, scriptTimes = { dyin
   function _completeScripted() {
     if (gs.state === STATES.dying) {
       gs.session.lives -= 1;
-      if (gs.session.lives > 0) { loadLevel(); enterIntro(); }
-      else gs.state = STATES.gameOver;
+      if (gs.session.lives <= 0) gs.state = STATES.gameOver;
+      else if (gs.world.canRespawnInPlace && gs.world.canRespawnInPlace()) {
+        gs.world.respawn(); gs.state = STATES.playing;     // checkpoint respawn — no intro card
+      } else { loadLevel(); enterIntro(); }                // classic full reload
     } else if (gs.state === STATES.levelClear) {
       gs.session.levelIndex += 1;
       if (gs.session.levelIndex >= levelCount) gs.state = STATES.win;
