@@ -67,3 +67,12 @@ test('screenToTile and tileToScreen are inverses (pan + zoom)', () => {
   const t = screenToTile(view, s.sx + 1, s.sy + 1);   // +1px stays inside the same cell
   assertEqual(t.col, 5); assertEqual(t.row, 3);
 });
+
+import { entityAt } from '../src/editor/input.js';
+
+test('entityAt returns the topmost entity index under a world point', () => {
+  const m = blankModel(8, 4);
+  const i = placeEntity(m, 'enemy', 32, 32);   // 16x16 at (32,32)
+  assertEqual(entityAt(m, 36, 36), i, 'hit inside the enemy box');
+  assertEqual(entityAt(m, 5, 5), -1, 'miss');
+});
