@@ -5,21 +5,12 @@
 import { FRICTION } from '../../engine/constants.js';
 
 export function movementSystem(world, dt) {
-  const byId = world._byId || (world._byId = new Map());
-  byId.clear();
-  for (const e of world.entities) byId.set(e.id, e);
-
-  // (1) carry — apply the mover's delta recorded last tick, then clear standingOn
+  // (1) apply support recorded by collision last tick (cleared by physics each tick)
   for (const e of world.entities) {
-    const b = e.c.body;
-    if (b && b.standingOn != null) {
-      const plat = byId.get(b.standingOn);
-      if (plat && plat.c.mover) {
-        e.c.transform.x += plat.c.mover.delta.x;
-        e.c.transform.y += plat.c.mover.delta.y;
-      }
-      b.standingOn = null;   // collision re-establishes it this tick
-    }
+    const b = e.c.body; const s = b && b.support;
+    if (!s) continue;
+    if (s.kind === 'mover') { e.c.transform.x += s.deltaX; e.c.transform.y += s.deltaY; }
+    // conveyor push (s.kind === 'conveyor') is added in Task 5
   }
 
   // (2) advance movers (ping-pong along axis), record delta

@@ -8,7 +8,7 @@ const clone = (v) => JSON.parse(JSON.stringify(v));   // templates are plain JSO
 // Component templates (default values). Per-entity instances are deep clones.
 const TEMPLATES = {
   transform: { x: 0, y: 0, w: 16, h: 16, prevX: 0, prevY: 0 },
-  body:      { vx: 0, vy: 0, onGround: false, gravity: true, standingOn: null },
+  body:      { vx: 0, vy: 0, onGround: false, gravity: true, support: null, invuln: 0 },
   control:   { accel: RUN_ACCEL, maxVx: RUN_MAX, maxVxRun: RUN_MAX_FAST, facing: 1 },
   jump:      { jumpV: JUMP_VELOCITY, jumpCut: JUMP_CUT, coyoteMax: COYOTE, bufferMax: JUMP_BUFFER,
                coyote: 0, buffer: 0, heldPrev: false, jumped: false },

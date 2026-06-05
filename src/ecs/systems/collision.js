@@ -20,7 +20,8 @@ export function collisionSystem(world, dt) {
     if (facts.landedOnTop) b.onGround = true;
   }
 
-  // rest body-entities on top of solid movers (platforms)
+  // rest body-entities on the FIRST solid surface they contact (records body.support).
+  // kind:'mover' carries the rider next tick; conveyors/bouncers extend this in later tasks.
   for (const e of world.entities) {
     const { body: b, transform: t } = e.c;
     if (!b) continue;
@@ -28,14 +29,17 @@ export function collisionSystem(world, dt) {
       const m = p.c.mover; if (!m || !m.solid) continue;
       const pt = p.c.transform;
       const feet = { x: t.x, y: t.y, w: t.w, h: t.h };
-      const top  = { x: pt.x, y: pt.y - 1, w: pt.w, h: 2 };   // thin band at platform top
+      const top  = { x: pt.x, y: pt.y - 1, w: pt.w, h: 2 };
       const horizontallyOver = t.x + t.w > pt.x && t.x < pt.x + pt.w;
       const fallingOnto = b.vy >= 0 && (t.y + t.h) >= pt.y - 1 && (t.y + t.h) <= pt.y + 6;
       if (horizontallyOver && fallingOnto) {
-        t.y = pt.y - t.h; b.vy = 0; b.onGround = true; b.standingOn = p.id;
+        t.y = pt.y - t.h; b.vy = 0; b.onGround = true;
+        b.support = { entityId: p.id, kind: 'mover', deltaX: m.delta.x, deltaY: m.delta.y, pushX: 0, bounceV: 0 };
+        break;                                        // first-contacted surface wins
       } else if (overlap(feet, top)) {
-        // touching but not falling: still counts as support
-        b.onGround = true; b.standingOn = p.id;
+        b.onGround = true;
+        b.support = { entityId: p.id, kind: 'mover', deltaX: m.delta.x, deltaY: m.delta.y, pushX: 0, bounceV: 0 };
+        break;
       }
     }
   }

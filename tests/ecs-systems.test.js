@@ -84,7 +84,24 @@ test('carry: player standing on an x-moving platform rides it', () => {
   const pl = w.entities.find(e => e.type === 'player');
   const plat = w.entities.find(e => e.type === 'platform');
   for (let i = 0; i < 40; i++) stepWorld(w, 1/60, NONE);   // land on platform, ride a while
-  assert(pl.c.body.standingOn === plat.id || pl.c.body.onGround, 'resting on platform');
+  assert(pl.c.body.support && pl.c.body.support.entityId === plat.id, 'rests on the platform (support descriptor)');
   // player x should track the platform x (within a tile)
   assert(Math.abs(pl.c.transform.x - plat.c.transform.x) < 16, 'rides with platform');
+});
+
+test('surface: rider rests on the FIRST-contacted surface (multi-mover break)', () => {
+  // two stationary movers side by side directly under the player; first-inserted wins.
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'ms', w: 12, h: 6 },
+    tiles: [emptyRow(12), emptyRow(12), emptyRow(12), emptyRow(12), emptyRow(12), groundRow(12)],
+    entities: [
+      { type: 'player', x: 64, y: 16 },
+      { type: 'platform', x: 56, y: 48, mover: { axis: 'x', dist: 0, speed: 0 } },
+      { type: 'platform', x: 72, y: 48, mover: { axis: 'x', dist: 0, speed: 0 } },
+    ],
+  });
+  const pl = w.entities.find(e => e.type === 'player');
+  const first = w.entities.filter(e => e.type === 'platform')[0];
+  for (let i = 0; i < 40; i++) stepWorld(w, 1/60, NONE);
+  assert(pl.c.body.support && pl.c.body.support.entityId === first.id, 'first-contacted surface wins, not last');
 });
