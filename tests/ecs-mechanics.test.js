@@ -83,3 +83,34 @@ test('spring launches the player up, no support/onGround, emits spring-bounce', 
   }
   assert(bounced, 'spring-bounce fired');
 });
+
+test('checkpoint records a respawn transform, one-shot, emits checkpoint', () => {
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'cp', w: 12, h: 4 },
+    tiles: [eRow(12), eRow(12), eRow(12), gRow(12)],
+    entities: [
+      { type: 'player', x: 40, y: 32 },
+      { type: 'checkpoint', x: 40, y: 32, trigger: { spawnX: 41, spawnY: 33 } },
+    ],
+  });
+  let hits = 0;
+  for (let i = 0; i < 20; i++) for (const e of (stepWorld(w,1/60,NONE)||[])) if (e.type === 'checkpoint') hits++;
+  assert(w.checkpoint && w.checkpoint.x === 41 && w.checkpoint.y === 33, 'respawn transform stored');
+  assertEqual(hits, 1, 'checkpoint is one-shot');
+});
+
+test('finish sets levelClear once and emits flag-reached once', () => {
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'fn', w: 12, h: 4 },
+    tiles: [eRow(12), eRow(12), eRow(12), gRow(12)],
+    entities: [
+      { type: 'player', x: 40, y: 32 },
+      { type: 'finish', x: 40, y: 32 },
+    ],
+  });
+  let flags = 0;
+  for (let i = 0; i < 20; i++) for (const e of (stepWorld(w,1/60,NONE)||[])) if (e.type === 'flag-reached') flags++;
+  assert(w.levelClear === true, 'levelClear set');
+  assertEqual(flags, 1, 'flag-reached emitted exactly once');
+  assert(w.getStatus().levelClear === true, 'status reflects levelClear');
+});

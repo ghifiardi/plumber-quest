@@ -15,6 +15,9 @@ export class EcsWorld {
     this._nextId = 0;          // reset to 0 per load (this is a fresh world)
     this.timeRemaining = 0;    // facade field; unused by demo-1 (no level-clear)
     this.animClock = 0;        // advanced each tick; read by the renderer via the view
+    this.checkpoint = null;    // { x, y } respawn transform set by a checkpoint trigger
+    this.playerDied = false;   // set by hazard collision (Task 9), cleared on respawn
+    this.levelClear = false;   // set by the finish trigger
   }
   add(entity) { this.entities.push(entity); return entity; }
   spawn(entity) { this._spawnQ.push(entity); }
@@ -29,7 +32,7 @@ export class EcsWorld {
   getStatus() {
     const p = this._player();
     const fell = !!p && p.c.transform.y > this.bounds.bottom;
-    return { timeUp: false, fell, playerDied: false, levelClear: false };
+    return { timeUp: false, fell, playerDied: this.playerDied, levelClear: this.levelClear };
   }
   beginScripted(_state) { /* no scripted death/clear art in ECS this cycle */ }
   updateScripted(_dt) { /* no-op this cycle */ }
