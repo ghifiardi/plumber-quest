@@ -33,7 +33,8 @@ src/ecs/
     index.js         — SYSTEM_ORDER (the deterministic schedule)
     input.js · movement.js · physics.js · collision.js · trigger.js · lifetime.js
 src/engine/
-  tile-collision.js  — pure tile/AABB helpers extracted from game/tiles.js, shared by both paths
+  tile-collision.js  — pure tile/AABB helpers written fresh for ECS (NOT extracted from
+                       game/tiles.js — that would touch src/game/*). Classic may adopt later.
 src/levels/ecs/
   demo-1.js          — first data-driven level (acceptance vehicle)
 ```
@@ -43,6 +44,7 @@ src/levels/ecs/
 - Systems are **pure over the world**: read/write component data only. No DOM, canvas, audio, `Math.random`, or wall-clock time.
 - Cosmetic state (anim clocks, squash, transitions, particles) stays in the existing event-driven FX layer — unchanged.
 - ECS reuses only **pure** primitives: `aabb.js`, `constants.js`, raw tile IDs, and `engine/tile-collision.js`. It never imports the classic `world` shape.
+- **`tile-collision.js` is introduced for ECS first.** It is written fresh (not extracted from `game/tiles.js`, which would modify `src/game/*` and is off-limits this cycle). The classic sim keeps its existing in-place tile logic; adopting the shared helper for classic is deferred to separate work with its own regression pass.
 - `ecs-adapter.js` and `sim.reset()` are **not** created. `EcsWorld` implements the facade itself; each level load constructs a fresh sim, so no reset is needed. Add them only if a real mismatch appears.
 
 ### 2.1 Facade contract (`src/sim/sim.js`, JSDoc typedefs)
@@ -53,12 +55,16 @@ Both `classic-adapter` and `EcsWorld` satisfy:
 sim.update(dt, input)      // advance one fixed 1/60 tick
 sim.drainEvents()          // return the accumulated event list AND clear the queue
                            //   (matches classic world: `const e = events; events = []; return e`)
+sim.getStatus()            // → { timeUp, fell, playerDied, levelClear }  (lifecycle signals)
 sim.getCameraTarget()      // → { x, y, w, h, facing? }  (dims + facing for look-ahead)
-sim.getBounds()            // → { w, h } level extents for camera clamp
+sim.getBounds()            // → { left, top, right, bottom }  (camera clamp bounds — the shape
+                           //   createCamera()/clampX expect; NOT {w,h})
 sim.getRenderView()        // → immutable-by-convention view model the renderer consumes
 ```
 
 `getRenderView()` is read-only **by convention**; the renderer-readonly test is the enforcing guard — we don't deep-freeze or overbuild immutability unless a test catches mutation.
+
+**Lifecycle / game-state coupling (resolved).** `createGameState()` currently branches on classic fields directly — `world.playerDied || world.fell || world.timeUp` → `dying`, `world.flagReached` → `levelClear` (game-state.js:76-77). This cycle **`game-state.js` is updated to read those signals through `sim.getStatus()` instead of poking `world.*`**, so it works against either sim path. The classic adapter derives `getStatus()` from the existing `world` fields (read-only — no change to `src/game/*`); `EcsWorld` derives them from its own state (player death/fall/out-of-bounds; `levelClear` from a `finish` trigger, which is a no-op stub until the mechanics cycle, so `demo-1` simply never reports `levelClear`). The scripted dying/levelClear **animations** stay owned by `game-state.js` (`_scriptT`) — no `beginScripted`/`updateScripted` facade methods are needed.
 
 ## 3. Entity & component model
 
@@ -180,7 +186,15 @@ Events accumulate across all fixed steps of a rendered frame and are returned-an
 
 ## 8. Rendering
 
-`view.js: ecsWorldToRenderView(world)` builds a view in the shape `renderer.js` already consumes (entities with position/sprite/facing, camera info, tile layer). Goal: the existing renderer needs little-to-no change. A dedicated `src/render/ecs-renderer.js` is added **only** if the view cannot be massaged to fit — not preemptively.
+`view.js: ecsWorldToRenderView(world)` builds a view in the shape `renderer.js` already consumes (entities with position/sprite/facing, camera info, tile layer). Goal: the existing renderer needs **minimal, additive** change. A dedicated `src/render/ecs-renderer.js` is added **only** if the view cannot be massaged to fit — not preemptively.
+
+Two concrete renderer gaps must be closed for `demo-1` to draw (verified against current `renderer.js`):
+
+1. **Flagpole guard.** `renderer.draw()` unconditionally calls `drawFlagpole(world, …)`, which reads `world.level.finish.x` (renderer.js:112,217). `demo-1` has no finish. **Fix:** guard the call — `if (view.level?.finish) drawFlagpole(...)`. This is an additive, behavior-preserving change (classic levels always have `finish`, so they're unaffected).
+
+2. **Moving-platform drawing.** The renderer only draws known entity types (`goomba`, `koopa`, and `ENT_SPRITE` → `mushroom/flower/fireball`; renderer.js:116-128); a `platform`/`mover` entity would be **invisible**. **Fix (this cycle):** add minimal `platform` support — `ecsWorldToRenderView` emits the platform as a drawable with `type:'platform'` + its `transform`, and the renderer draws it as a solid tile-strip rectangle (16px cells) using the existing tile palette. No new art required.
+
+Both renderer edits are additive and covered by the renderer-readonly test (they must still mutate nothing).
 
 ## 9. Determinism contract (enforced)
 
@@ -197,6 +211,8 @@ Events accumulate across all fixed steps of a rendered frame and are returned-an
 - **Renderer-readonly test** extended to the ECS render view: `ecsWorldToRenderView` + a draw must mutate nothing.
 - **Loader validation tests:** unknown type, unknown component key, 0/2 players, non-rectangular tiles, missing meta fields → each throws with a clear message; the `editor`/`meta` bags are accepted.
 - **Carry test:** a player standing on an x-axis platform moves with it exactly one platform-delta per tick, no drift/double-move.
+- **Facade-parity tests:** `getBounds()` returns `{left,top,right,bottom}` and feeds `createCamera` without error; `getStatus()` returns `{timeUp,fell,playerDied,levelClear}` from both adapters; `game-state.js` drives `dying`/`levelClear` transitions off `getStatus()` for a forced ECS player-death and (classic) flag-reach.
+- **Renderer-gap tests:** drawing a finish-less ECS view does not throw (flagpole guard); a `platform` entity produces visible pixels (platform draw support).
 - **Classic regression:** the existing **138/0** suite — including the classic golden-master fingerprint — stays green, proving Coexist.
 
 **Acceptance:** `demo-1` is playable on the ECS path through the facade — player runs/jumps (coyote+buffer), rides the moving platform, the existing renderer draws it, existing audio/haptics/particles fire from ECS events — with the classic game untouched and all tests green.
