@@ -6,6 +6,9 @@ import { makeSolid } from '../../engine/tile-collision.js';
 import { TILE } from '../../engine/constants.js';
 
 export function collisionSystem(world, dt) {
+  // INVARIANT: tiles are immutable after load, so the solid() lookup is cached once.
+  // If a future cycle (Track B/C) mutates world.tiles (breakable bricks, etc.), this
+  // cache must be invalidated (clear world._solid) when tiles change.
   const solid = world._solid || (world._solid = makeSolid(world.tiles));
 
   for (const e of world.entities) {

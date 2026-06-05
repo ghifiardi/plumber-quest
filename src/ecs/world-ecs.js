@@ -35,7 +35,9 @@ export class EcsWorld {
   updateScripted(_dt) { /* no-op this cycle */ }
 
   getCameraTarget() {
-    const p = this._player(); const t = p.c.transform;
+    const p = this._player();
+    if (!p) return { x: 0, y: 0, w: 16, h: 16, facing: 1 };   // player is never culled today; guard the invariant
+    const t = p.c.transform;
     return { x: t.x, y: t.y, w: t.w, h: t.h, facing: (p.c.control && p.c.control.facing) || 1 };
   }
   getBounds() { return this.bounds; }
