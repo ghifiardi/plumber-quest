@@ -58,3 +58,12 @@ test('resize keeps the rectangular invariant and drops out-of-bounds entities', 
   rectInvariant(m);
   assert(!m.entities.some(e=>e.type==='enemy'), 'out-of-bounds enemy dropped');
 });
+
+import { screenToTile, tileToScreen } from '../src/editor/render.js';
+
+test('screenToTile and tileToScreen are inverses (pan + zoom)', () => {
+  const view = { panX: 48, zoom: 20 };               // panX world-px, zoom screen-px per 16px tile
+  const s = tileToScreen(view, 5, 3);                 // tile (col5,row3) -> screen px
+  const t = screenToTile(view, s.sx + 1, s.sy + 1);   // +1px stays inside the same cell
+  assertEqual(t.col, 5); assertEqual(t.row, 3);
+});
