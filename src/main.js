@@ -250,6 +250,7 @@ const loop = createLoop({
   },
   afterFrame() {                                   // once per frame, after ALL steps
     if (gs.state !== prevState && (gs.state === STATES.intro || gs.state === STATES.title)) effects.clear();
+    if (gs.state === STATES.playing && prevState === STATES.dying) { effects.clear(); hitstop.clear(); }  // in-place respawn: drop lingering FX
     if (gs.world) for (const ev of gs.world.drainEvents()) {
       if (ev.type === 'flag-reached') { audio.stopMusic(); audio.fanfare(); }   // duck music for the fanfare
       else audio.playEvent(ev.type);
