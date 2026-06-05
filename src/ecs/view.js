@@ -21,8 +21,8 @@ export function ecsWorldToRenderView(world) {
     player: {
       x: pt.x, y: pt.y, prevX: pt.prevX, prevY: pt.prevY, w: pt.w, h: pt.h,
       vx: pb.vx, vy: pb.vy, onGround: pb.onGround, facing: pc.facing,
-      power: 'big',           // demo-1 hero is the 'big' sprite tier
-      invuln: 0,
+      power: 'big',           // hero is the 'big' sprite tier (no power tiers this cycle)
+      invuln: pb.invuln,      // real post-respawn invulnerability (renderer blink)
     },
     level: { finish: null },  // no finish entity in demo-1 (renderer guards this)
     bounds: world.bounds,

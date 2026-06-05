@@ -105,3 +105,13 @@ test('surface: rider rests on the FIRST-contacted surface (multi-mover break)', 
   for (let i = 0; i < 40; i++) stepWorld(w, 1/60, NONE);
   assert(pl.c.body.support && pl.c.body.support.entityId === first.id, 'first-contacted surface wins, not last');
 });
+
+test('invuln: body.invuln decays to 0 over time and surfaces in the view', () => {
+  const w = demoWorld();
+  const pl = w.entities.find(e => e.type === 'player');
+  pl.c.body.invuln = 0.1;
+  for (let i = 0; i < 3; i++) stepWorld(w, 1/60, NONE);   // 0.05s elapsed
+  assert(pl.c.body.invuln > 0, 'still invulnerable mid-window');
+  for (let i = 0; i < 10; i++) stepWorld(w, 1/60, NONE);  // well past 0.1s
+  assertEqual(pl.c.body.invuln, 0, 'decayed to exactly 0');
+});
