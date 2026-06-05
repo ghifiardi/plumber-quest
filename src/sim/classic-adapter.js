@@ -40,6 +40,8 @@ export function makeClassicSim(rows, ctx) {
     }),
     getBounds: () => world.bounds,
     getRenderView: () => world,
+    canRespawnInPlace: () => false,
+    respawn: () => {},
     get timeRemaining() { return world.timeRemaining; },
     set timeRemaining(v) { world.timeRemaining = v; },
   };

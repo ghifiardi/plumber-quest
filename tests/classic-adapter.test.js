@@ -39,3 +39,10 @@ test('classic adapter timeRemaining is read/writable', () => {
   assertEqual(sim.getRenderView().timeRemaining, 123, 'set delegates to world');
   assertEqual(sim.timeRemaining, 123, 'get delegates to world');
 });
+
+test('classic adapter cannot respawn in place', () => {
+  const sim = makeClassicSim(ROWS, ctx);
+  assertEqual(sim.canRespawnInPlace(), false);
+  sim.respawn();   // no-op, must not throw
+  assert(true);
+});

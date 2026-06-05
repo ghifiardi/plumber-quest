@@ -18,6 +18,7 @@ export class EcsWorld {
     this.checkpoint = null;    // { x, y } respawn transform set by a checkpoint trigger
     this.playerDied = false;   // set by hazard collision (Task 9), cleared on respawn
     this.levelClear = false;   // set by the finish trigger
+    this.playerSpawn = null;   // { x, y } captured by the loader for respawn fallback
   }
   add(entity) { this.entities.push(entity); return entity; }
   spawn(entity) { this._spawnQ.push(entity); }
@@ -45,6 +46,17 @@ export class EcsWorld {
   }
   getBounds() { return this.bounds; }
   getRenderView() { return ecsWorldToRenderView(this); }
+
+  canRespawnInPlace() { return true; }
+  respawn() {
+    const p = this._player(); if (!p) return;
+    const at = this.checkpoint || this.playerSpawn || { x: p.c.transform.x, y: p.c.transform.y };
+    const t = p.c.transform, b = p.c.body, j = p.c.jump;
+    t.x = at.x; t.y = at.y; t.prevX = at.x; t.prevY = at.y;
+    b.vx = 0; b.vy = 0; b.onGround = false; b.support = null; b.invuln = 1.2;
+    if (j) { j.buffer = 0; j.coyote = 0; j.jumped = false; j.heldPrev = false; }
+    this.playerDied = false;
+  }
 
   _player() { return this.entities.find(e => e.type === 'player'); }
 }
