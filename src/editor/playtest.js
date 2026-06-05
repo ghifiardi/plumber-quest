@@ -34,7 +34,10 @@ export function startPlaytest(model, onStop) {
   let sim = definitionToWorld(snapshot);
 
   const overlay = document.createElement('div'); overlay.id = 'pt-overlay';
+  // cover the editor while playtesting (dev-tool overlay; full-viewport, centered)
+  overlay.style.cssText = 'position:fixed; inset:0; z-index:10; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;';
   const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 240; canvas.id = 'pt-canvas';
+  canvas.style.cssText = 'width:512px; height:480px; image-rendering:pixelated;';
   const banner = document.createElement('div'); banner.id = 'pt-banner';
   const stopBtn = document.createElement('button'); stopBtn.textContent = 'Stop (Esc)';
   overlay.append(canvas, banner, stopBtn); document.body.append(overlay);

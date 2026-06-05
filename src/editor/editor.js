@@ -2,7 +2,7 @@
 // Dev level editor boot (?editor=1). Builds DOM, owns the model + edit loop, wires
 // tools/palette/property-panel/validate/play/export. Reuses the game sprite atlas.
 import { buildSprites } from '../render/sprites.js';
-import { blankModel, paintTile, eraseTile, floodFill, placeEntity, moveEntity, deleteEntity, setEntityProp, resize } from './model.js';
+import { blankModel, paintTile, eraseTile, floodFill, placeEntity, moveEntity, deleteEntity, setEntityProp } from './model.js';
 import { definitionToEditorModel, editorModelToModuleText, TILE_LEGEND } from './serialize.js';
 import { validateModel } from './validate.js';
 import { drawEditor, screenToTile } from './render.js';
