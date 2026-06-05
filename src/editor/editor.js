@@ -10,6 +10,8 @@ import { entityAt, snap, editableComponentsForType } from './input.js';
 import { startPlaytest } from './playtest.js';
 import DEMO1 from '../levels/ecs/demo-1.js';
 import DEMO2 from '../levels/ecs/demo-2.js';
+import LEVEL1 from '../levels/ecs/level-1.js';
+import LEVEL2 from '../levels/ecs/level-2.js';
 import { TILE } from '../engine/constants.js';
 
 const ENTITY_TYPES = ['player','platform','spring','conveyor','checkpoint','finish','enemy'];
@@ -42,8 +44,9 @@ export function boot() {
   for (const ch in TILE_LEGEND) if (TILE_LEGEND[ch] !== 'empty') bar.append(btn(TILE_LEGEND[ch], () => { tool='paint'; tileKind = TILE_LEGEND[ch]; }));
   const eSel = el('select'); for (const t of ENTITY_TYPES) eSel.append(el('option', { value:t, textContent:t })); eSel.value = entType;
   eSel.onchange = () => { entType = eSel.value; }; bar.append(eSel);
-  const lvl = el('select'); [['demo-1',DEMO1],['demo-2',DEMO2],['blank',null]].forEach(([n]) => lvl.append(el('option',{value:n,textContent:n})));
-  lvl.value = 'demo-2'; lvl.onchange = () => { model = lvl.value==='demo-1'?definitionToEditorModel(DEMO1):lvl.value==='blank'?blankModel():definitionToEditorModel(DEMO2); selection=null; syncMeta(); fit(); renderProps(); }; bar.append(lvl);
+  const LEVELS = { 'demo-1':DEMO1, 'demo-2':DEMO2, 'level-1':LEVEL1, 'level-2':LEVEL2 };
+  const lvl = el('select'); [...Object.keys(LEVELS), 'blank'].forEach(n => lvl.append(el('option',{value:n,textContent:n})));
+  lvl.value = 'demo-2'; lvl.onchange = () => { model = lvl.value==='blank' ? blankModel() : definitionToEditorModel(LEVELS[lvl.value]); selection=null; syncMeta(); fit(); renderProps(); }; bar.append(lvl);
   // name + size controls (wired to model.meta + resize)
   const nameInp = el('input', { type:'text', title:'level name', size:10 }); nameInp.onchange = () => { model.meta.name = nameInp.value; }; bar.append(nameInp);
   const wInp = el('input', { type:'number', min:4, max:200, title:'width (tiles)' });
