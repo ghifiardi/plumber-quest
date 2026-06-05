@@ -1,6 +1,7 @@
 // src/ecs/world-ecs.js  (minimal; step() + facade methods added in a later task)
 import { TILE } from '../engine/constants.js';
 import { SYSTEM_ORDER } from './systems/index.js';
+import { ecsWorldToRenderView } from './view.js';
 
 export class EcsWorld {
   constructor({ tiles, meta }) {
@@ -21,6 +22,26 @@ export class EcsWorld {
   nextId() { return this._nextId++; }
   emit(ev) { this.events.push(ev); }
   drainEvents() { const e = this.events; this.events = []; return e; }
+
+  // --- Sim facade (see src/sim/sim.js) ---
+  update(dt, intent) { stepWorld(this, dt, intent); }
+
+  getStatus() {
+    const p = this._player();
+    const fell = !!p && p.c.transform.y > this.bounds.bottom;
+    return { timeUp: false, fell, playerDied: false, levelClear: false };
+  }
+  beginScripted(_state) { /* no scripted death/clear art in ECS this cycle */ }
+  updateScripted(_dt) { /* no-op this cycle */ }
+
+  getCameraTarget() {
+    const p = this._player(); const t = p.c.transform;
+    return { x: t.x, y: t.y, w: t.w, h: t.h, facing: (p.c.control && p.c.control.facing) || 1 };
+  }
+  getBounds() { return this.bounds; }
+  getRenderView() { return ecsWorldToRenderView(this); }
+
+  _player() { return this.entities.find(e => e.type === 'player'); }
 }
 
 // Advance the world one fixed tick. Returns the events emitted THIS tick (for tests).
