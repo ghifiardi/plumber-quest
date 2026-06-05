@@ -11,7 +11,7 @@ export function ecsWorldToRenderView(world) {
     const t = e.c.transform;
     entities.push({
       type: e.type, x: t.x, y: t.y, prevX: t.prevX, prevY: t.prevY, w: t.w, h: t.h,
-      // platform extent for drawing (renderer reads w/h)
+      facing: e.c.walker ? e.c.walker.dir : 1,   // enemy sprite flip
     });
   }
 
