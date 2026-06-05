@@ -4,7 +4,8 @@ import { createGameState, STATES } from '../src/game/game-state.js';
 function worldFactory(start = 5) {
   return (levelIndex, session) => ({
     levelIndex, timeRemaining: start, timeUp:false, fell:false, playerDied:false, flagReached:false,
-    update(){}, updateScripted(){ /* frozen */ }, beginDeathAnim(){}, beginClearAnim(){},
+    update(){}, updateScripted(){ /* frozen */ }, beginScripted(){},
+    getStatus() { return { timeUp: this.timeUp, fell: this.fell, playerDied: this.playerDied, levelClear: this.flagReached }; },
   });
 }
 function toPlay(gs) { let n = 0; while (gs.state === STATES.intro && n++ < 1000) gs.update(1/60, {}); }

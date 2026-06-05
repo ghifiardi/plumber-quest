@@ -4,17 +4,15 @@ import { computeDisplay } from './engine/display.js';
 import { createCamera } from './engine/camera.js';
 import { createAudio } from './engine/audio.js';
 import { createGameState, STATES } from './game/game-state.js';
-import { createWorld } from './game/world.js';
-import { parseLevel } from './levels/level-format.js';
-import { spawnGoomba, spawnKoopa } from './game/enemies.js';
 import { createRenderer } from './render/renderer.js';
-import { LEVEL_TIME, DIFFICULTIES, GOOMBA_SPEED, KOOPA_SPEED } from './engine/constants.js';
 import L1 from './levels/world-1-1.js';
 import L2 from './levels/world-1-2.js';
 import L3 from './levels/world-1-3.js';
 import L4 from './levels/world-1-4.js';
 import L5 from './levels/world-1-5.js';
 import L6 from './levels/world-1-6.js';
+import DEMO1 from './levels/ecs/demo-1.js';
+import { makeSim } from './sim/factory.js';
 import { SOCIAL } from './net/config.js';
 import { createSocial } from './net/social.js';
 import { createNoopTransport } from './net/noop-transport.js';
@@ -27,7 +25,8 @@ import * as handles from './net/handles.js';
 import { installationId, resetIdentity } from './net/identity.js';
 import { CALLOUTS } from './net/schema.js';
 
-const LEVELS = [L1, L2, L3, L4, L5, L6];
+const ECS_DEMO = new URLSearchParams(location.search).get('ecsdemo');
+const LEVELS = ECS_DEMO ? [DEMO1] : [L1, L2, L3, L4, L5, L6];
 const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 const input = createInput(); input.attach(window);
@@ -88,21 +87,10 @@ const EVENT_HAPTIC = {
   'player-hit': 30, 'player-died': [50, 30, 50], 'flag-reached': [20, 20, 40], 'one-up': [12, 30, 12],
 };
 
-// worldFactory receives the SAME session object game-state owns, so simulation scoring
-// (coins/score) mutates persistent state directly (spec §6; Findings #2/#5).
-// Progressive difficulty: later levels get less time + faster enemies, scaled further by
-// the chosen difficulty preset.
+// One factory for both sim paths; the discriminant lives in makeSim (sim/factory.js),
+// so neither main.js nor game-state.js branches on classic-vs-ECS.
 function worldFactory(levelIndex, session) {
-  const diff = DIFFICULTIES[gs.difficulty] || DIFFICULTIES.normal;
-  const time = Math.max(150, Math.round((LEVEL_TIME - levelIndex * 18) * diff.timeScale));
-  const espeed = diff.enemyScale * (1 + levelIndex * 0.08);   // +8% per level
-  const lvl = parseLevel(LEVELS[levelIndex], { tile: 16 });
-  const w = createWorld(lvl, { session, time });
-  for (const s of lvl.entitySpawns) {
-    if (s.type === 'goomba') w.entities.push(spawnGoomba(s.x, s.y, GOOMBA_SPEED * espeed));
-    else if (s.type === 'koopa') w.entities.push(spawnKoopa(s.x, s.y, KOOPA_SPEED * espeed));
-  }
-  return w;
+  return makeSim(LEVELS[levelIndex], { levelIndex, session, difficulty: gs.difficulty });
 }
 
 const gs = createGameState({ worldFactory, levelCount: LEVELS.length });
@@ -185,7 +173,7 @@ if (SOCIAL.enabled && localStorage.getItem(ONLINE_KEY) === '1') goOnline();
 else setOnlineUI('off');
 
 // Begin a run with the currently-selected difficulty (music start owned by afterFrame).
-function startRun() { gs.startSelected(); cam.bounds = gs.world.bounds; }
+function startRun() { gs.startSelected(); cam.bounds = gs.world.getBounds(); }
 
 // Unified meta-input router for non-gameplay states (title / difficulty menu / pause).
 // Gameplay movement keys are handled separately by input.attach.
@@ -253,7 +241,7 @@ const loop = createLoop({
     if (hitstop.step()) { effects.tick(1 / 60); return; }   // freeze sim; keep particles alive; keep intent pending
     const intent = input.consumeIntent();
     gs.update(1 / 60, intent);
-    if (gs.world) cam.bounds = gs.world.bounds;
+    if (gs.world) cam.bounds = gs.world.getBounds();
     effects.tick(1 / 60);
   },
   afterFrame() {                                   // once per frame, after ALL steps
@@ -270,7 +258,7 @@ const loop = createLoop({
       else if (ev.type === 'player-hit') hitstop.trigger(6);
     }
     if (gs.world && gs.state === STATES.playing) {
-      const pl = gs.world.player;
+      const pl = gs.world.getRenderView().player;
       if (pl.onGround && Math.abs(pl.vx) > 60 && pl.facing !== prevFacing) {
         effects.spawn('dust', pl.x + pl.w / 2, pl.y + pl.h);   // skid kick
       }
@@ -286,10 +274,10 @@ const loop = createLoop({
     const st = gs.state;
     if (st === STATES.title) renderer.drawTitle();
     else if (st === STATES.difficultySelect) renderer.drawDifficultySelect(gs);
-    else if (st === STATES.intro) renderer.drawIntro(gs.world, gs.session);
+    else if (st === STATES.intro) renderer.drawIntro(gs.world.getRenderView(), gs.session);
     else if (st === STATES.gameOver) renderer.drawGameOver(gs.session);
     else if (st === STATES.win) renderer.drawWin(gs.session);
-    else if (gs.world) renderer.draw(gs.world, cam, alpha, gs.session, st);  // playing/paused/dying/level-clear
+    else if (gs.world) renderer.draw(gs.world.getRenderView(), cam, alpha, gs.session, st);  // playing/paused/dying/level-clear
     else renderer.drawTitle();
     if (st !== STATES.title && st !== STATES.difficultySelect && st !== STATES.gameOver && st !== STATES.win && st !== STATES.intro)
       fxOverlay.draw(effects.list(), cam, effects.flash());   // particles over the world only

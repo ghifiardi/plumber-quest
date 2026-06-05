@@ -42,10 +42,8 @@ export function createGameState({ worldFactory, levelCount, scriptTimes = { dyin
 
   const enterScripted = (state) => {
     gs.state = state; gs._scriptT = 0;
-    if (state === STATES.dying) {
-      gs.world.beginDeathAnim && gs.world.beginDeathAnim();
-    } else if (state === STATES.levelClear) {
-      gs.world.beginClearAnim && gs.world.beginClearAnim();
+    gs.world.beginScripted(state);
+    if (state === STATES.levelClear) {
       gs._clearStart = gs.world.timeRemaining;   // whole timer to convert
       gs._clearAwarded = 0;                       // cumulative score awarded (bias-free)
     }
@@ -73,19 +71,20 @@ export function createGameState({ worldFactory, levelCount, scriptTimes = { dyin
       }
       case STATES.playing: {
         gs.world.update(dt, intent);
-        if (gs.world.playerDied || gs.world.fell || gs.world.timeUp) enterScripted(STATES.dying);
-        else if (gs.world.flagReached) enterScripted(STATES.levelClear);
+        const s = gs.world.getStatus();
+        if (s.playerDied || s.fell || s.timeUp) enterScripted(STATES.dying);
+        else if (s.levelClear) enterScripted(STATES.levelClear);
         break;
       }
       case STATES.dying: {
         gs._scriptT += dt;
-        gs.world.updateScripted && gs.world.updateScripted(dt);
+        gs.world.updateScripted(dt);
         if (gs._scriptT >= scriptTimes.dying) _completeScripted();
         break;
       }
       case STATES.levelClear: {
         gs._scriptT += dt;
-        gs.world.updateScripted && gs.world.updateScripted(dt);
+        gs.world.updateScripted(dt);
         // Convert the ENTIRE remaining timer into score over scriptTimes.levelClear seconds,
         // independent of the timer's magnitude. Award the delta to a rounded cumulative target
         // so there is no per-frame rounding bias and the final total is exactly round(start*10).

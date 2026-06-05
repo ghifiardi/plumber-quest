@@ -109,10 +109,17 @@ export function createRenderer(canvas) {
       ctx.drawImage(img, dx, dy, TILE, TILE);
     }
 
-    drawFlagpole(world, cam, clock);
+    if (world.level && world.level.finish) drawFlagpole(world, cam, clock);
 
     for (const e of world.entities) {
       const p = interp(e, alpha);
+      if (e.type === 'platform') {
+        for (let dx = 0; dx < e.w; dx += TILE) {
+          const tw = Math.min(TILE, e.w - dx);
+          ctx.drawImage(sprites.usedBlock, Math.round(p.x + dx - cam.x), Math.round(p.y), tw, e.h);
+        }
+        continue;
+      }
       if (e.type === 'goomba') {
         const sz = sprites.goombaSize;
         const img = e.squashT > 0 ? sprites.goombaSquash : sprites.goombaFrames[goombaFrame(clock)];
