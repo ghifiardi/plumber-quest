@@ -127,10 +127,10 @@ export function createRenderer(canvas) {
         continue;
       }
       if (e.type === 'spring' || e.type === 'conveyor' || e.type === 'checkpoint' || e.type === 'finish') {
-        // plain placeholder markers — a later art pass replaces these (spec §8)
-        const COLORS = { spring: '#d33', conveyor: '#888', checkpoint: '#3c6', finish: '#fc3' };
-        ctx.fillStyle = COLORS[e.type];
-        ctx.fillRect(Math.round(p.x - cam.x), Math.round(p.y), e.w, e.h);
+        const SPR = { spring:'spring', conveyor:'conveyorTile', checkpoint:'checkpointFlag', finish:'finishFlag' };
+        const img = sprites[SPR[e.type]];
+        if (e.type === 'conveyor') { for (let dx = 0; dx < e.w; dx += TILE) ctx.drawImage(img, Math.round(p.x + dx - cam.x), Math.round(p.y), Math.min(TILE, e.w - dx), e.h); }
+        else ctx.drawImage(img, Math.round(p.x - cam.x), Math.round(p.y), TILE, e.h);
         continue;
       }
       if (e.type === 'goomba') {

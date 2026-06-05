@@ -713,6 +713,80 @@ const FIREBALL = [
   '..KKK...',
 ];
 
+// --- mechanic entity sprites (16x16, original art) ---
+const SPRING = [
+  '................',
+  '................',
+  '.....KKKKKK.....',
+  '.....KRRRRK.....',
+  '.....KKKKKK.....',
+  '.....KRRRRK.....',
+  '.....KKKKKK.....',
+  '.....KRRRRK.....',
+  '.....KKKKKK.....',
+  '.....KRRRRK.....',
+  '....KKKKKKKK....',
+  '...KDDDDDDDDK...',
+  '...KDDDDDDDDK...',
+  '...KKKKKKKKKK...',
+  '................',
+  '................',
+];
+const CONVEYOR_T = [
+  '................',
+  'KKKKKKKKKKKKKKKK',
+  'KDDDDDDDDDDDDDDK',
+  'KDWDDWDDWDDWDDDK',
+  'KDDDDDDDDDDDDDDK',
+  'KKKKKKKKKKKKKKKK',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+  '................',
+];
+const CHECKPOINT_F = [
+  '.....K..........',
+  '.....KGGGGG.....',
+  '.....KGGGGG.....',
+  '.....KGGGGG.....',
+  '.....KKKKKK.....',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '....KKK.........',
+];
+const FINISH_F = [
+  '.....K..........',
+  '.....KYOYOY.....',
+  '.....KOYOYO.....',
+  '.....KYOYOY.....',
+  '.....KOYOYO.....',
+  '.....KKKKKK.....',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '.....K..........',
+  '....KKK.........',
+];
+
 // Recolour maps applied at build time so the authored grids stay readable.
 // HERO: red cap/shirt -> teal, blue overalls -> orange (an original character).
 const HERO_REMAP = { R:'P', r:'p', N:'V', n:'v' };
@@ -753,6 +827,10 @@ export function buildSprites(scale = 1) {
     mushroom: grid(remap(MUSHROOM, MUSH_REMAP), scale),
     flower: grid(FLOWER, scale),
     fireball: grid(FIREBALL, scale),
+    spring: grid(SPRING, scale),
+    conveyorTile: grid(CONVEYOR_T, scale),
+    checkpointFlag: grid(CHECKPOINT_F, scale),
+    finishFlag: grid(FINISH_F, scale),
   };
 }
 
