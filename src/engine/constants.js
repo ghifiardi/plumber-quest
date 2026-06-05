@@ -5,6 +5,7 @@ export const MAX_FALL = 600;          // px/s
 export const RUN_ACCEL = 1200;        // px/s^2
 export const RUN_MAX = 140;           // px/s walk
 export const RUN_MAX_FAST = 220;      // px/s with run held
+export const CONVEYOR_MAX = 160;      // px/s fallback cap for conveyor push when no rider control cap
 export const FRICTION = 1600;         // px/s^2
 export const JUMP_VELOCITY = -380;    // px/s initial jump
 export const JUMP_CUT = 0.45;         // multiply vy when jump released early

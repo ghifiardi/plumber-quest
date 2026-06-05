@@ -2,7 +2,7 @@
 // 1) carry riders by their platform's PREVIOUS-tick delta (cross-tick, no double-move)
 // 2) advance kinematic movers, recording this tick's delta
 // 3) apply control accel/friction to body.vx; resolve jump (coyote+buffer+cut) to body.vy
-import { FRICTION } from '../../engine/constants.js';
+import { FRICTION, CONVEYOR_MAX } from '../../engine/constants.js';
 
 export function movementSystem(world, dt) {
   // (1) apply support recorded by collision last tick (cleared by physics each tick)
@@ -10,7 +10,10 @@ export function movementSystem(world, dt) {
     const b = e.c.body; const s = b && b.support;
     if (!s) continue;
     if (s.kind === 'mover') { e.c.transform.x += s.deltaX; e.c.transform.y += s.deltaY; }
-    // conveyor push (s.kind === 'conveyor') is added in Task 5
+    else if (s.kind === 'conveyor') {
+      const cap = (e.c.control && e.c.control.maxVx) || CONVEYOR_MAX;
+      b.vx = Math.max(-cap, Math.min(cap, b.vx + s.pushX));
+    }
   }
 
   // (2) advance movers (ping-pong along axis), record delta

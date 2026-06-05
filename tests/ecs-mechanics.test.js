@@ -36,3 +36,26 @@ test('loader builds a world with the new types', () => {
   });
   assertEqual(w.entities.length, 6);
 });
+
+import { stepWorld } from '../src/ecs/world-ecs.js';
+const NONE = { right:false,left:false,run:false,jumpHeld:false,jumpPressed:false,jumpReleased:false,firePressed:false };
+const eRow = (w) => Array.from({ length: w }, () => ({ tile: 'empty' }));
+const gRow = (w) => Array.from({ length: w }, () => ({ tile: 'ground' }));
+
+test('conveyor pushes a standing rider horizontally, clamped', () => {
+  // a WIDE belt (w:96) so the rider stays on it through the measurement window.
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'cv', w: 16, h: 6 },
+    tiles: [eRow(16), eRow(16), eRow(16), eRow(16), eRow(16), gRow(16)],
+    entities: [
+      { type: 'player', x: 40, y: 16 },
+      { type: 'conveyor', x: 24, y: 48, transform: { w: 96 }, conveyor: { pushX: 80 } },
+    ],
+  });
+  const pl = w.entities.find(e => e.type === 'player');
+  for (let i = 0; i < 15; i++) stepWorld(w, 1/60, NONE);   // land on the wide belt
+  const x0 = pl.c.transform.x;
+  for (let i = 0; i < 20; i++) stepWorld(w, 1/60, NONE);   // carried by the belt (no input)
+  assert(pl.c.transform.x > x0 + 2, 'belt pushed the rider');
+  assert(Math.abs(pl.c.body.vx) <= pl.c.control.maxVx + 1e-6, 'vx never exceeds the rider cap');
+});
