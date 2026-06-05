@@ -7,5 +7,6 @@ export function createHitstop() {
     trigger(n) { if (n > frames) frames = n; },     // take the max; don't stack
     step() { if (frames > 0) { frames--; return true; } return false; },  // true => SKIP this sim step
     active() { return frames > 0; },
+    clear() { frames = 0; },
   };
 }

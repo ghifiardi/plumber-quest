@@ -26,6 +26,7 @@ import * as handles from './net/handles.js';
 import { installationId, resetIdentity } from './net/identity.js';
 import { CALLOUTS } from './net/schema.js';
 
+function startGame() {
 const ECS_DEMO = new URLSearchParams(location.search).get('ecsdemo');
 const LEVELS = ECS_DEMO === '2' ? [DEMO2]
   : ECS_DEMO ? [DEMO1]
@@ -249,6 +250,7 @@ const loop = createLoop({
   },
   afterFrame() {                                   // once per frame, after ALL steps
     if (gs.state !== prevState && (gs.state === STATES.intro || gs.state === STATES.title)) effects.clear();
+    if (gs.state === STATES.playing && prevState === STATES.dying) { effects.clear(); hitstop.clear(); }  // in-place respawn: drop lingering FX
     if (gs.world) for (const ev of gs.world.drainEvents()) {
       if (ev.type === 'flag-reached') { audio.stopMusic(); audio.fanfare(); }   // duck music for the fanfare
       else audio.playEvent(ev.type);
@@ -289,3 +291,11 @@ const loop = createLoop({
   },
 });
 loop.start();
+}
+
+// Dev-only level editor (hidden from players). Gated BEFORE any game side effect runs.
+if (new URLSearchParams(location.search).has('editor')) {
+  import('./editor/editor.js').then(m => m.boot());
+} else {
+  startGame();
+}

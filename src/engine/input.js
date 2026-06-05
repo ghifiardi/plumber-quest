@@ -24,10 +24,15 @@ export function createInput() {
 
   function _onKey(code, down) { setAction(MAP[code], down); }
 
+  let _detach = null;
   function attach(target = window) {
-    target.addEventListener('keydown', e => { if (MAP[e.code]) { e.preventDefault(); _onKey(e.code, true); } });
-    target.addEventListener('keyup',   e => { if (MAP[e.code]) { e.preventDefault(); _onKey(e.code, false); } });
+    const onDown = e => { if (MAP[e.code]) { e.preventDefault(); _onKey(e.code, true); } };
+    const onUp   = e => { if (MAP[e.code]) { e.preventDefault(); _onKey(e.code, false); } };
+    target.addEventListener('keydown', onDown);
+    target.addEventListener('keyup', onUp);
+    _detach = () => { target.removeEventListener('keydown', onDown); target.removeEventListener('keyup', onUp); _detach = null; };
   }
+  function dispose() { if (_detach) _detach(); }
 
   function beginFrame() { frameOpen = true; }
 
@@ -42,5 +47,5 @@ export function createInput() {
     return intent;
   }
 
-  return { attach, beginFrame, consumeIntent, setAction, _onKey };
+  return { attach, dispose, beginFrame, consumeIntent, setAction, _onKey };
 }
