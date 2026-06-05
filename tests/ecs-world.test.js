@@ -48,3 +48,13 @@ test('facade: beginScripted/updateScripted are safe no-ops', () => {
   w.beginScripted('dying'); w.updateScripted(1/60);   // must not throw
   assert(true);
 });
+
+test('getRenderView is memoized within a tick and invalidated by a step', () => {
+  const w = world();
+  const v1 = w.getRenderView();
+  const v2 = w.getRenderView();
+  assert(v1 === v2, 'same view object returned without a step (no re-alloc)');
+  w.update(1/60, NONE);
+  const v3 = w.getRenderView();
+  assert(v3 !== v1, 'fresh view after a step');
+});
