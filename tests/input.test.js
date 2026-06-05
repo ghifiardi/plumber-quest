@@ -77,3 +77,17 @@ test('setAction ignores unknown actions safely', () => {
   const s = input.consumeIntent();
   assert(!s.left && !s.right && !s.jumpHeld, 'no effect from unknown action');
 });
+
+test('dispose() detaches listeners; game behavior unchanged when never called', () => {
+  // a fake target recording add/remove so we can assert symmetric teardown
+  const handlers = [];
+  const target = {
+    addEventListener: (type, fn) => handlers.push({ type, fn, live: true }),
+    removeEventListener: (type, fn) => { const h = handlers.find(x => x.type===type && x.fn===fn && x.live); if (h) h.live = false; },
+  };
+  const input = createInput();
+  input.attach(target);
+  assertEqual(handlers.filter(h=>h.live).length, 2, 'keydown+keyup attached');
+  input.dispose();
+  assertEqual(handlers.filter(h=>h.live).length, 0, 'both detached');
+});
