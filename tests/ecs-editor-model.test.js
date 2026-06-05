@@ -76,3 +76,13 @@ test('entityAt returns the topmost entity index under a world point', () => {
   assertEqual(entityAt(m, 36, 36), i, 'hit inside the enemy box');
   assertEqual(entityAt(m, 5, 5), -1, 'miss');
 });
+
+import { editableComponentsForType } from '../src/editor/input.js';
+test('editableComponentsForType lists schema-editable components per type', () => {
+  assertEqual(editableComponentsForType('spring').join(','), 'transform,bouncer');
+  assertEqual(editableComponentsForType('enemy').join(','), 'transform,walker');
+  assertEqual(editableComponentsForType('platform').join(','), 'transform,mover');
+  assertEqual(editableComponentsForType('conveyor').join(','), 'transform,conveyor');
+  assertEqual(editableComponentsForType('checkpoint').join(','), 'transform,trigger');
+  assertEqual(editableComponentsForType('player').join(','), 'transform');
+});
