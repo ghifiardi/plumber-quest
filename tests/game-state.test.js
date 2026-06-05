@@ -5,7 +5,14 @@ function stubWorldFactory() {
   return () => ({
     update() { this.updated = (this.updated||0)+1; },
     updated: 0, timeUp: false, fell: false, flagReached: false, playerDied: false,
-    scriptDone: true,
+    timeRemaining: 0, scriptDone: true,
+    // facade surface — getStatus derives from the mutable fields above so existing
+    // tests that set world.playerDied / world.flagReached directly still drive transitions
+    getStatus() { return { timeUp: this.timeUp, fell: this.fell, playerDied: this.playerDied, levelClear: this.flagReached }; },
+    beginScripted() {}, updateScripted() {},
+    getBounds() { return { left: 0, top: 0, right: 0, bottom: 240 }; },
+    getCameraTarget() { return { x: 0, y: 0, w: 16, h: 16, facing: 1 }; },
+    getRenderView() { return {}; },
   });
 }
 // Advance through the intro card into actual play.
@@ -115,4 +122,22 @@ test('flag reached -> level-clear -> next level (via intro), win after last', ()
   toPlay(gs);                           // into play on level 2
   gs.world.flagReached = true; gs.update(1/60, {}); gs.finishScriptedForTest();
   assertEqual(gs.state, STATES.win, 'win after last level');
+});
+
+test('game-state drives dying off facade getStatus().playerDied', () => {
+  let dead = false;
+  const sim = {
+    update() { dead = true; },
+    getStatus: () => ({ timeUp:false, fell:false, playerDied: dead, levelClear:false }),
+    beginScripted() {}, updateScripted() {},
+    drainEvents: () => [], getBounds: () => ({left:0,top:0,right:99,bottom:240}),
+    getCameraTarget: () => ({x:0,y:0,w:16,h:16,facing:1}), getRenderView: () => ({}),
+    get timeRemaining() { return 0; }, set timeRemaining(_v) {},
+  };
+  const gs = createGameState({ worldFactory: () => sim, levelCount: 1 });
+  gs.startGame();                       // -> intro
+  gs.state = STATES.playing;            // jump straight to playing for the test
+  gs.update(1/60, {});                  // update sets dead=true; status -> playerDied -> dying
+  gs.update(1/60, {});                  // dying script advances
+  assertEqual(gs.state, STATES.dying);
 });
