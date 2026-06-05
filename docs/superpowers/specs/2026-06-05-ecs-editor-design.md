@@ -39,7 +39,7 @@ Static imports still load (harmless), but their effects are inert until `startGa
 - `input.js` — pointer/keyboard → model ops + tool/selection/pan state.
 - `playtest.js` — disposable real-stack play of a serialized snapshot.
 
-**Separation guarantees.** The editor imports only existing public surfaces (`definitionToWorld`, `makeSim`, `buildSprites`, `createRenderer/Input/Camera`, `TYPE_REGISTRY`, the tile constants). It never imports `src/game/*` or runs inside the sim. Renderer-read-only and determinism rules are unaffected.
+**Separation guarantees.** The editor imports only existing public surfaces (`definitionToWorld`, `buildSprites`, `createRenderer/Input/Camera`, `TYPE_REGISTRY`, the tile constants). It never imports `src/game/*` or instantiates the classic path **— not even transitively**: playtest builds ECS sims via `definitionToWorld(editorModelToDefinition(model))` directly, **not** via `makeSim` (which statically imports `classic-adapter` → `src/game/*`). An `EcsWorld` already implements the sim facade, so the editor needs nothing from the factory. The editor never runs inside the sim; renderer-read-only and determinism rules are unaffected.
 
 ---
 
@@ -66,7 +66,7 @@ Mutate-and-return; preserve the invariant `tiles.length === meta.h` and every ro
 **Tile legend** (fixed; defined once in `serialize.js`): `' '→empty, #→ground, B→brick, U→upgrade-block, C→coin-block, o→coin, x→used-block, P→pipe, p→pipe-deco`. Unknown chars/kinds throw on conversion.
 
 ### 3.3 `validate.js`
-`validateModel(model) → { ok, errors[] }`: runs `editorModelToDefinition` (catching its invariant errors) then `definitionToWorld` in try/catch (loader authority: single-player, rectangular, finite coords, unknown-component-key rejection with the `editor`/`meta` escape hatch), plus editor warnings (no `finish`, no `checkpoint`). **Play and Export are gated on `ok`.**
+`validateModel(model) → { ok, errors[], warnings[] }`. `ok` reflects **hard validity only**: it runs `editorModelToDefinition` (catching its invariant errors) then `definitionToWorld` in try/catch (loader authority: single-player, rectangular, finite coords, unknown-component-key rejection with the `editor`/`meta` escape hatch); any throw → `errors[]`, `ok:false`. It **additionally** returns non-blocking `warnings[]` — `no finish` (the level can't be completed) and `no checkpoint`. **Play and Export gate on `ok` (hard validity); warnings never block** — you can sketch a finish-less level and still play/export it.
 
 ---
 
@@ -84,9 +84,9 @@ Mutate-and-return; preserve the invariant `tiles.length === meta.h` and every ro
 **Export (gated on `validateModel().ok`):** `editorModelToModuleText(model,{compactTiles:true})` → **Copy** (clipboard) / **Download** (`<name>.js`).
 
 **Playtest (`playtest.js`) — four constraints:**
-1. **Snapshot isolation:** `def = editorModelToDefinition(model)`; `sim = makeSim(def)`. The live model is never handed to the sim.
+1. **Snapshot isolation:** `def = editorModelToDefinition(model)`; `sim = definitionToWorld(def)` (an `EcsWorld` implementing the sim facade — **not** `makeSim`, so the editor stays free of the classic path). The live model is never handed to the sim.
 2. **Fixed timestep:** a disposable loop using the game's accumulator (`FIXED_DT = 1/60`); never `sim.update(variableDt)`.
-3. **Real stack, lives-free death policy:** reuses `createRenderer`/`createInput`/`createCamera` on the 256×240 game canvas; **no `game-state`/session/lives involvement**. On death: `canRespawnInPlace()` → `sim.respawn()` and keep playing; else rebuild `sim = makeSim(snapshot)`; show a small "Respawned"/"Restarted" status. `levelClear` → "Level complete!" banner.
+3. **Real stack, lives-free death policy:** reuses `createRenderer`/`createInput`/`createCamera` on the 256×240 game canvas; **no `game-state`/session/lives involvement**. On death: `canRespawnInPlace()` → `sim.respawn()` and keep playing; else rebuild `sim = definitionToWorld(snapshot)`; show a small "Respawned"/"Restarted" status. `levelClear` → "Level complete!" banner.
 4. **Disposable:** `stop()` cancels RAF, calls `input.dispose()`, clears banners, restores the editor canvas at the prior scroll position. No listeners/RAF survive Stop.
 
 **`createInput().dispose()`** — new detach API on `src/engine/input.js`. Purely additive: **the normal game is byte-identical when `dispose()` is never called** (existing `attach` behavior unchanged).
@@ -114,7 +114,7 @@ Mutate-and-return; preserve the invariant `tiles.length === meta.h` and every ro
 ### 7.A Editor MVP — must pass (judged on its own, free of art/demo concerns)
 - **Model:** `model.js` ops + the `tiles=h×w` / `meta.w/h` invariant after paint/fill/resize.
 - **Serialize (contract layer):** round-trip `demo-2` (def→model→def loads, behavior-relevant fields preserved); compact export imports to a loader-valid `engine:'ecs'` definition; escape-hatch fidelity (an `editor` bag survives; an unknown component key like `wings` is rejected); serializer invariant checks (non-rectangular, `meta.w/h` mismatch, unknown tile kind, non-finite coords, missing/duplicate player, disallowed entity key all throw early).
-- **Validate:** `{ok,errors}` for a valid model and each invalid case; Play/Export gated on `ok`.
+- **Validate:** `{ok,errors,warnings}` — `ok:true` for a valid model and each hard-invalid case `ok:false`; a finish-less model is `ok:true` with a `no finish` **warning** (does not block Play/Export); Play/Export gate on `ok` only.
 - **Disposable input:** existing `input.test.js` stays green; new test asserts `dispose()` detaches listeners; **game unchanged when `dispose()` never called.**
 - **Router gating (riskiest edit):** a targeted test or browser-smoke assertion that `?editor=1` performs **no game side effects** (no audio/social/loop/localStorage) before the router, and the editor boots with no console exceptions; `?ecsdemo=1/2` and classic still boot normally.
 
