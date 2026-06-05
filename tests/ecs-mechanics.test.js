@@ -114,3 +114,40 @@ test('finish sets levelClear once and emits flag-reached once', () => {
   assertEqual(flags, 1, 'flag-reached emitted exactly once');
   assert(w.getStatus().levelClear === true, 'status reflects levelClear');
 });
+
+test('walker patrols and turns at a wall', () => {
+  const rows = [];
+  for (let r = 0; r < 5; r++) rows.push(eRow(10));
+  rows.push(gRow(10));
+  rows[4][8] = { tile: 'ground' }; rows[3][8] = { tile: 'ground' };   // wall near the right
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'wk', w: 10, h: 6 },
+    tiles: rows,
+    entities: [
+      { type: 'player', x: 8, y: 16 },
+      { type: 'enemy', x: 96, y: 64, walker: { speed: 40, dir: 1 } },   // walking right toward the wall
+    ],
+  });
+  const en = w.entities.find(e => e.type === 'enemy');
+  for (let i = 0; i < 120; i++) stepWorld(w, 1/60, NONE);
+  assertEqual(en.c.walker.dir, -1, 'reversed after hitting the wall');
+});
+
+test('walker turns at a ledge edge instead of walking off', () => {
+  const rows = [];
+  for (let r = 0; r < 5; r++) rows.push(eRow(10));
+  const floor = eRow(10); for (let c = 0; c <= 4; c++) floor[c] = { tile: 'ground' };
+  rows.push(floor);
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'le', w: 10, h: 6 },
+    tiles: rows,
+    entities: [
+      { type: 'player', x: 8, y: 16 },
+      { type: 'enemy', x: 32, y: 64, walker: { speed: 40, dir: 1 } },
+    ],
+  });
+  const en = w.entities.find(e => e.type === 'enemy');
+  for (let i = 0; i < 120; i++) stepWorld(w, 1/60, NONE);
+  assert(en.c.transform.x < 5 * 16, 'did not walk off the ledge');
+  assertEqual(en.c.walker.dir, -1, 'reversed at the ledge');
+});
