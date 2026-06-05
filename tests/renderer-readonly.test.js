@@ -98,3 +98,35 @@ test('renderer issues draw calls for a platform entity', () => {
   renderer.draw(ecsView(), cam, 0, { score:0, coins:0, lives:3, levelIndex:0 }, 'playing');
   assert(drawCount() > before, 'platform/tiles produced draw calls');
 });
+
+function ecsViewAll() {
+  const eR = (w) => Array.from({ length: w }, () => ({ tile: 'empty' }));
+  const gR = (w) => Array.from({ length: w }, () => ({ tile: 'ground' }));
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'all', w: 20, h: 4 },
+    tiles: [eR(20), eR(20), eR(20), gR(20)],
+    entities: [
+      { type: 'player', x: 16, y: 0 },
+      { type: 'platform', x: 48, y: 40, mover: { axis:'x', dist:16, speed:10 } },
+      { type: 'spring', x: 80, y: 32 }, { type: 'conveyor', x: 112, y: 32 },
+      { type: 'checkpoint', x: 144, y: 16 }, { type: 'finish', x: 176, y: 16 },
+      { type: 'enemy', x: 96, y: 32, walker: { speed: 20, dir: 1 } },
+    ],
+  });
+  for (let i = 0; i < 5; i++) w.update(1/60, ECS_NONE);
+  return w.getRenderView();
+}
+
+test('renderer draws a view with every new entity type without throwing', () => {
+  const { renderer, cam } = rendererWithSpy();
+  let threw = false;
+  try { renderer.draw(ecsViewAll(), cam, 0, { score:0, coins:0, lives:3, levelIndex:0 }, 'playing'); }
+  catch (e) { threw = true; }
+  assert(!threw, 'new entity types render without throwing');
+});
+
+test('view exposes enemy facing for sprite flip', () => {
+  const v = ecsViewAll();
+  const enemy = v.entities.find(e => e.type === 'enemy');
+  assert(enemy && 'facing' in enemy, 'enemy carries a facing in the view');
+});

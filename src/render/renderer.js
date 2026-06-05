@@ -120,6 +120,19 @@ export function createRenderer(canvas) {
         }
         continue;
       }
+      if (e.type === 'enemy') {
+        const sz = sprites.goombaSize;
+        const img = sprites.goombaFrames[goombaFrame(clock)];
+        blit(img, Math.round(p.x + e.w/2 - sz.w/2 - cam.x), Math.round(p.y + e.h - sz.h), sz.w, sz.h, e.facing > 0);
+        continue;
+      }
+      if (e.type === 'spring' || e.type === 'conveyor' || e.type === 'checkpoint' || e.type === 'finish') {
+        // plain placeholder markers — a later art pass replaces these (spec §8)
+        const COLORS = { spring: '#d33', conveyor: '#888', checkpoint: '#3c6', finish: '#fc3' };
+        ctx.fillStyle = COLORS[e.type];
+        ctx.fillRect(Math.round(p.x - cam.x), Math.round(p.y), e.w, e.h);
+        continue;
+      }
       if (e.type === 'goomba') {
         const sz = sprites.goombaSize;
         const img = e.squashT > 0 ? sprites.goombaSquash : sprites.goombaFrames[goombaFrame(clock)];

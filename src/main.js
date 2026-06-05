@@ -12,6 +12,7 @@ import L4 from './levels/world-1-4.js';
 import L5 from './levels/world-1-5.js';
 import L6 from './levels/world-1-6.js';
 import DEMO1 from './levels/ecs/demo-1.js';
+import DEMO2 from './levels/ecs/demo-2.js';
 import { makeSim } from './sim/factory.js';
 import { SOCIAL } from './net/config.js';
 import { createSocial } from './net/social.js';
@@ -26,7 +27,9 @@ import { installationId, resetIdentity } from './net/identity.js';
 import { CALLOUTS } from './net/schema.js';
 
 const ECS_DEMO = new URLSearchParams(location.search).get('ecsdemo');
-const LEVELS = ECS_DEMO ? [DEMO1] : [L1, L2, L3, L4, L5, L6];
+const LEVELS = ECS_DEMO === '2' ? [DEMO2]
+  : ECS_DEMO ? [DEMO1]
+  : [L1, L2, L3, L4, L5, L6];
 const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 const input = createInput(); input.attach(window);

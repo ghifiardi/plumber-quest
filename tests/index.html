@@ -50,6 +50,10 @@
   await import('./classic-adapter.test.js');
   await import('./sim-factory.test.js');
   await import('./ecs-determinism.test.js');
+  await import('./ecs-jump.test.js');
+  await import('./ecs-mechanics.test.js');
+  await import('./ecs-respawn.test.js');
+  await import('./ecs-determinism-2.test.js');
   const out = document.getElementById('out');
   await runAll(out);
   // Headless runner hook: when loaded with ?post=1, POST the summary text to the

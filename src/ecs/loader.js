@@ -42,7 +42,7 @@ export function definitionToWorld(def) {
     const type = def1.type;
     if (!TYPE_REGISTRY[type]) throw new Error(`loader: unknown entity type: ${type}`);
     if (!isNum(def1.x) || !isNum(def1.y)) throw new Error(`loader: entity ${type} needs finite x,y`);
-    if (type === 'player') players++;
+    if (type === 'player') { players++; world.playerSpawn = { x: def1.x, y: def1.y }; }
 
     const { c } = instantiate(type);
     // position

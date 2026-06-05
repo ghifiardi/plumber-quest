@@ -3,7 +3,19 @@
 // then rests entities on top of solid movers (sets body.standingOn for next-tick carry).
 import { resolveAgainstTiles, overlap } from '../../engine/aabb.js';
 import { makeSolid } from '../../engine/tile-collision.js';
-import { TILE } from '../../engine/constants.js';
+import { TILE, STOMP_BOUNCE } from '../../engine/constants.js';
+
+// Describe the solid surface an entity offers (or null). Movers carry; conveyors push.
+function surfaceOf(p) {
+  if (p.c.mover && p.c.mover.solid) {
+    const m = p.c.mover;
+    return { entityId: p.id, kind: 'mover', deltaX: m.delta.x, deltaY: m.delta.y, pushX: 0, bounceV: 0 };
+  }
+  if (p.c.conveyor && p.c.conveyor.solid) {
+    return { entityId: p.id, kind: 'conveyor', deltaX: 0, deltaY: 0, pushX: p.c.conveyor.pushX, bounceV: 0 };
+  }
+  return null;
+}
 
 export function collisionSystem(world, dt) {
   // INVARIANT: tiles are immutable after load, so the solid() lookup is cached once.
@@ -20,22 +32,63 @@ export function collisionSystem(world, dt) {
     if (facts.landedOnTop) b.onGround = true;
   }
 
-  // rest body-entities on top of solid movers (platforms)
+  // rest body-entities on the FIRST solid surface they contact (records body.support).
+  // kind:'mover' carries the rider next tick; conveyors/bouncers extend this in later tasks.
   for (const e of world.entities) {
     const { body: b, transform: t } = e.c;
     if (!b) continue;
     for (const p of world.entities) {
-      const m = p.c.mover; if (!m || !m.solid) continue;
+      const surf = surfaceOf(p); if (!surf) continue;
       const pt = p.c.transform;
       const feet = { x: t.x, y: t.y, w: t.w, h: t.h };
-      const top  = { x: pt.x, y: pt.y - 1, w: pt.w, h: 2 };   // thin band at platform top
+      const top  = { x: pt.x, y: pt.y - 1, w: pt.w, h: 2 };
       const horizontallyOver = t.x + t.w > pt.x && t.x < pt.x + pt.w;
       const fallingOnto = b.vy >= 0 && (t.y + t.h) >= pt.y - 1 && (t.y + t.h) <= pt.y + 6;
       if (horizontallyOver && fallingOnto) {
-        t.y = pt.y - t.h; b.vy = 0; b.onGround = true; b.standingOn = p.id;
+        t.y = pt.y - t.h; b.vy = 0; b.onGround = true; b.support = surf; break;
       } else if (overlap(feet, top)) {
-        // touching but not falling: still counts as support
-        b.onGround = true; b.standingOn = p.id;
+        b.onGround = true; b.support = surf; break;
+      }
+    }
+  }
+
+  // springs: impulse on top-contact crossing (prev->current bottom), not a support state
+  for (const e of world.entities) {
+    const { body: b, transform: t } = e.c;
+    if (!b) continue;
+    for (const p of world.entities) {
+      const bnc = p.c.bouncer; if (!bnc || !bnc.solid) continue;
+      const pt = p.c.transform;
+      const horizontallyOver = t.x + t.w > pt.x && t.x < pt.x + pt.w;
+      const prevBottom = t.prevY + t.h, curBottom = t.y + t.h;
+      const crossed = prevBottom <= pt.y + 6 && curBottom >= pt.y && b.vy > 0;
+      if (horizontallyOver && crossed) {
+        t.y = pt.y - t.h;
+        b.vy = -bnc.bounceV; b.onGround = false; b.support = null;   // launch; not grounded
+        world.emit({ type: 'spring-bounce', x: t.x + t.w / 2, y: pt.y });
+        break;
+      }
+    }
+  }
+
+  // player-vs-enemy: stomp check FIRST, then hazard damage (only if not stomped and not invuln)
+  const player = world.entities.find(e => e.type === 'player');
+  if (player) {
+    const pt = player.c.transform, pb = player.c.body;
+    for (const en of world.entities) {
+      if (en === player || !(en.c.tags && en.c.tags.length)) continue;
+      const et = en.c.transform;
+      if (!overlap(pt, et)) continue;
+      const stompable = en.c.tags.includes('stompable');
+      const enemyTop = et.y, prevBottom = pt.prevY + pt.h, curBottom = pt.y + pt.h;
+      const stomped = stompable && pb.vy > 0 && prevBottom <= enemyTop + 6 && curBottom >= enemyTop;
+      if (stomped) {
+        world.remove(en);
+        pb.vy = STOMP_BOUNCE;
+        world.emit({ type: 'enemy-stomped', x: et.x + et.w / 2, y: et.y });
+      } else if (en.c.tags.includes('hazard') && pb.invuln <= 0) {
+        world.playerDied = true;
+        world.emit({ type: 'player-died', x: pt.x + pt.w / 2, y: pt.y });
       }
     }
   }

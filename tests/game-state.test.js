@@ -141,3 +141,21 @@ test('game-state drives dying off facade getStatus().playerDied', () => {
   gs.update(1/60, {});                  // dying script advances
   assertEqual(gs.state, STATES.dying);
 });
+
+test('in-place respawn returns straight to playing without losing the world', () => {
+  let respawned = false;
+  const sim = {
+    update() {}, getStatus: () => ({ timeUp:false, fell:false, playerDied:false, levelClear:false }),
+    beginScripted() {}, updateScripted() {},
+    canRespawnInPlace: () => true, respawn() { respawned = true; },
+    drainEvents: () => [], getBounds: () => ({left:0,top:0,right:99,bottom:240}),
+    getCameraTarget: () => ({x:0,y:0,w:16,h:16,facing:1}), getRenderView: () => ({}),
+    get timeRemaining() { return 0; }, set timeRemaining(_v) {},
+  };
+  const gs = createGameState({ worldFactory: () => sim, levelCount: 1 });
+  gs.startGame(); gs.state = STATES.dying; gs.session.lives = 3;
+  gs.finishScriptedForTest();        // dying script completes
+  assert(respawned, 'sim.respawn() called');
+  assertEqual(gs.state, STATES.playing, 'straight to playing, no intro card');
+  assertEqual(gs.session.lives, 2, 'a life was spent');
+});
