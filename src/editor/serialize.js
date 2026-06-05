@@ -45,3 +45,30 @@ export function editorModelToDefinition(model) {
     entities: entities.map(e => clone(e)),
   };
 }
+
+// Emit module TEXT that imports to a NORMAL loader definition (loader unchanged).
+// compactTiles: a char-legend + row-strings + inline expander build the {tile} grid.
+export function editorModelToModuleText(model, { compactTiles = true } = {}) {
+  editorModelToDefinition(model);                 // validate first; throws if invalid
+  const { meta, tiles, entities } = model;
+  const ents = entities.map(e => '    ' + JSON.stringify(e)).join(',\n');
+  if (!compactTiles) {
+    return `export default ${JSON.stringify(editorModelToDefinition(model), null, 2)};\n`;
+  }
+  const legend = Object.entries(TILE_LEGEND).map(([ch, k]) => `${JSON.stringify(ch)}: ${JSON.stringify(k)}`).join(', ');
+  const rows = tiles.map(row => '    ' + JSON.stringify(row.map(k => KIND_TO_CHAR[k]).join(''))).join(',\n');
+  return `// ${meta.name}
+const T = { ${legend} };
+const rows = [
+${rows}
+  ].map(r => [...r].map(ch => ({ tile: T[ch] })));
+export default {
+  engine: 'ecs',
+  meta: ${JSON.stringify(meta)},
+  tiles: rows,
+  entities: [
+${ents}
+  ],
+};
+`;
+}

@@ -1,6 +1,6 @@
 // tests/ecs-editor-serialize.test.js
 import { test, assert, assertEqual } from './harness.js';
-import { definitionToEditorModel, editorModelToDefinition } from '../src/editor/serialize.js';
+import { definitionToEditorModel, editorModelToDefinition, editorModelToModuleText } from '../src/editor/serialize.js';
 import { definitionToWorld } from '../src/ecs/loader.js';
 import DEMO2 from '../src/levels/ecs/demo-2.js';
 
@@ -50,4 +50,27 @@ test('editorModelToDefinition rejects invariant violations EARLY', () => {
 test('editor/meta escape-hatch bags survive', () => {
   const def = editorModelToDefinition({ meta:{name:'x',w:2,h:1}, tiles:[['empty','empty']], entities:[{type:'player',x:0,y:0,editor:{note:'spawn'}}] });
   assertEqual(def.entities[0].editor.note, 'spawn');
+});
+
+// evaluate emitted module text without a bundler: turn `export default` into a return.
+function evalModule(text) { return new Function(text.replace('export default', 'return'))(); }
+
+test('compact export re-imports to a loader-valid definition', () => {
+  const text = editorModelToModuleText(goodModel(), { compactTiles: true });
+  const def = evalModule(text);
+  assertEqual(def.engine, 'ecs');
+  assertEqual(def.tiles[1][0].tile, 'ground');
+  definitionToWorld(def);   // must not throw
+  assertEqual(def.entities.find(e=>e.type==='finish').type, 'finish');
+});
+
+test('compact export round-trips demo-2 to a valid definition', () => {
+  const text = editorModelToModuleText(definitionToEditorModel(DEMO2), { compactTiles: true });
+  const def = evalModule(text);
+  definitionToWorld(def);
+  assertEqual(def.entities.length, DEMO2.entities.length);
+});
+
+test('editorModelToModuleText validates before emitting', () => {
+  expectThrow(() => editorModelToModuleText({ meta:{name:'x',w:2,h:1}, tiles:[['empty','empty']], entities:[] }), 'invalid model must not export');
 });
