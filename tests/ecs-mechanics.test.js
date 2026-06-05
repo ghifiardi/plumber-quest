@@ -151,3 +151,42 @@ test('walker turns at a ledge edge instead of walking off', () => {
   assert(en.c.transform.x < 5 * 16, 'did not walk off the ledge');
   assertEqual(en.c.walker.dir, -1, 'reversed at the ledge');
 });
+
+test('stomp from above removes the enemy, bounces the player, emits enemy-stomped', () => {
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'st', w: 12, h: 8 },
+    tiles: [eRow(12),eRow(12),eRow(12),eRow(12),eRow(12),eRow(12),eRow(12), gRow(12)],
+    entities: [
+      { type: 'player', x: 48, y: 16 },                              // falls onto the enemy
+      { type: 'enemy', x: 48, y: 96, walker: { speed: 0, dir: 1 } }, // stationary under the player
+    ],
+  });
+  const pl = w.entities.find(e => e.type === 'player');
+  let stomped = false;
+  for (let i = 0; i < 80; i++) {
+    const evs = stepWorld(w, 1/60, NONE);
+    if (evs.some(e => e.type === 'enemy-stomped')) { stomped = true; break; }
+  }
+  assert(stomped, 'enemy-stomped fired');
+  assert(pl.c.body.vy < 0, 'player bounced up');
+  assert(!w.entities.some(e => e.type === 'enemy'), 'enemy removed');
+});
+
+test('side contact kills the player (player-died), suppressed while invuln', () => {
+  const w = definitionToWorld({
+    engine: 'ecs', meta: { name: 'hz', w: 12, h: 4 },
+    tiles: [eRow(12), eRow(12), eRow(12), gRow(12)],
+    entities: [
+      { type: 'player', x: 40, y: 32 },
+      { type: 'enemy', x: 48, y: 32, walker: { speed: 0, dir: -1 } },  // beside the player
+    ],
+  });
+  const pl = w.entities.find(e => e.type === 'player');
+  pl.c.body.invuln = 1.0;                          // invulnerable first
+  for (let i = 0; i < 5; i++) stepWorld(w, 1/60, NONE);
+  assert(w.playerDied === false, 'no death while invulnerable');
+  pl.c.body.invuln = 0;                            // drop invuln
+  let died = false;
+  for (let i = 0; i < 30; i++) { const evs = stepWorld(w, 1/60, { ...NONE, right:true }); if (evs.some(e => e.type === 'player-died')) died = true; }
+  assert(died && w.playerDied, 'side contact killed the player once vulnerable');
+});

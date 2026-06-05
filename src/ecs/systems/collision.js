@@ -3,7 +3,7 @@
 // then rests entities on top of solid movers (sets body.standingOn for next-tick carry).
 import { resolveAgainstTiles, overlap } from '../../engine/aabb.js';
 import { makeSolid } from '../../engine/tile-collision.js';
-import { TILE } from '../../engine/constants.js';
+import { TILE, STOMP_BOUNCE } from '../../engine/constants.js';
 
 // Describe the solid surface an entity offers (or null). Movers carry; conveyors push.
 function surfaceOf(p) {
@@ -67,6 +67,28 @@ export function collisionSystem(world, dt) {
         b.vy = -bnc.bounceV; b.onGround = false; b.support = null;   // launch; not grounded
         world.emit({ type: 'spring-bounce', x: t.x + t.w / 2, y: pt.y });
         break;
+      }
+    }
+  }
+
+  // player-vs-enemy: stomp check FIRST, then hazard damage (only if not stomped and not invuln)
+  const player = world.entities.find(e => e.type === 'player');
+  if (player) {
+    const pt = player.c.transform, pb = player.c.body;
+    for (const en of world.entities) {
+      if (en === player || !(en.c.tags && en.c.tags.length)) continue;
+      const et = en.c.transform;
+      if (!overlap(pt, et)) continue;
+      const stompable = en.c.tags.includes('stompable');
+      const enemyTop = et.y, prevBottom = pt.prevY + pt.h, curBottom = pt.y + pt.h;
+      const stomped = stompable && pb.vy > 0 && prevBottom <= enemyTop + 6 && curBottom >= enemyTop;
+      if (stomped) {
+        world.remove(en);
+        pb.vy = STOMP_BOUNCE;
+        world.emit({ type: 'enemy-stomped', x: et.x + et.w / 2, y: et.y });
+      } else if (en.c.tags.includes('hazard') && pb.invuln <= 0) {
+        world.playerDied = true;
+        world.emit({ type: 'player-died', x: pt.x + pt.w / 2, y: pt.y });
       }
     }
   }
