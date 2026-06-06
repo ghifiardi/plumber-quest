@@ -19,6 +19,7 @@ export class EcsWorld {
     this.playerDied = false;   // set by hazard collision (Task 9), cleared on respawn
     this.levelClear = false;   // set by the finish trigger
     this.playerSpawn = null;   // { x, y } captured by the loader for respawn fallback
+    this._view = null;         // per-tick memoized render view; invalidated each step
   }
   add(entity) { this.entities.push(entity); return entity; }
   spawn(entity) { this._spawnQ.push(entity); }
@@ -45,7 +46,7 @@ export class EcsWorld {
     return { x: t.x, y: t.y, w: t.w, h: t.h, facing: (p.c.control && p.c.control.facing) || 1 };
   }
   getBounds() { return this.bounds; }
-  getRenderView() { return ecsWorldToRenderView(this); }
+  getRenderView() { return this._view || (this._view = ecsWorldToRenderView(this)); }   // memoized per tick
 
   canRespawnInPlace() { return true; }
   respawn() {
@@ -56,6 +57,7 @@ export class EcsWorld {
     b.vx = 0; b.vy = 0; b.onGround = false; b.support = null; b.invuln = 1.2;
     if (j) { j.buffer = 0; j.coyote = 0; j.jumped = false; j.heldPrev = false; }
     this.playerDied = false;
+    this._view = null;            // player teleported — drop the memoized view
   }
 
   _player() { return this.entities.find(e => e.type === 'player'); }
@@ -64,6 +66,7 @@ export class EcsWorld {
 // Advance the world one fixed tick. Returns the events emitted THIS tick (for tests).
 // Snapshots prevX/prevY first (renderer interpolation), runs systems in order.
 export function stepWorld(world, dt, intent) {
+  world._view = null;                     // invalidate the memoized render view (state changes this tick)
   world.animClock += dt;                  // single animation clock (renderer reads via the view)
   for (const e of world.entities) {
     const t = e.c.transform; if (t) { t.prevX = t.x; t.prevY = t.y; }

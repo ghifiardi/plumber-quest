@@ -108,7 +108,7 @@ export function boot() {
   }
 
   syncMeta(); fit(); refreshStatus(); renderProps();
-  (function loop() { drawEditor(ctx, model, sprites, view, selection); requestAnimationFrame(loop); })();
+  (function loop() { if (!playActive) drawEditor(ctx, model, sprites, view, selection); requestAnimationFrame(loop); })();
 }
 
 function el(tag, props={}) { const n = document.createElement(tag); Object.assign(n, props); return n; }
