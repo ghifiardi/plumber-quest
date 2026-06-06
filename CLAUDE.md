@@ -41,6 +41,7 @@ Original retro 8-bit side-scrolling platformer (Mario-inspired, **100% original 
 3. **Store listings:** App Store listing drafted in chat; **Play Store short(≤80)/full(≤4000) descriptions NOT yet drafted** (offered). First-release "What's new" (EN+ID) drafted in chat.
 4. ⚠️ **`kids-games` app category vs online mode CONFLICT** (set in iOS pbxproj): Apple Kids category bans sharing IDs with third parties (Supabase). Reconsider category or gate online mode before App Store submission.
 5. **Closed testing:** Play needs ≥12 testers opted-in 14 days before production (newer personal dev accounts). WhatsApp tester-invite (EN+ID) drafted in chat.
+6. **Story & marketing visuals:** `docs/STORY.md` defines the hero **Pip, the Pipe-Runner** + the short story (EN+ID) + a full **PRODUCTION BRIEF** for: a polished **hero card**, 2–3 **story-scene stills** (rendered from real game art), and a **<30s (~18–22s) 9:16 story video** (extend `tools/recorder.html`). Token-heavy — do in this fresh session. Output to `media/`.
 
 **ROADMAP — remaining "make it more interesting" tracks** (Track A done):
 - **B — detail & world themes** (animated tiles, deeper parallax, themed worlds: overworld/underground/sky/castle).
